@@ -74,7 +74,7 @@ jobs:
     - name: Set if its upgrade
       run: |
         echo 'UPGRADE_APP=""' >> $GITHUB_ENV
-      if: ${{ startsWith(github.event_name, 'workflow_dispatch') && github.event.inputs.firstTime == true }}
+      if: ${{ startsWith(github.event_name, 'workflow_dispatch') && github.event.inputs.firstTime == 'true' }}
       
     - run: echo Deploying ${{github.ref}} to ${{env.FORGE_ENV}} of ${{env.JIRA_SITE_URL}}
     - run: npm install -g @forge/cli@latest
