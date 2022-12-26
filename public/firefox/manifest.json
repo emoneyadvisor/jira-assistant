@@ -62,12 +62,11 @@
     "identity",
     "http://*/",
     "https://*/",
+    "https://*.atlassian.net/*",
     "storage",
     "idle",
+    "tabs",
     "scripting"
-  ],
-  "optional_permissions": [
-    "tabs"
   ],
   "developer": {
     "name": "Shridhar TL",

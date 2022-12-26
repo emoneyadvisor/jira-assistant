@@ -78,14 +78,13 @@
     "notifications",
     "activeTab",
     "idle",
-    "scripting"
-  ],
-  "optional_permissions": [
+    "scripting",
     "unlimitedStorage"
   ],
   "host_permissions": [
     "http://*/",
     "https://*/",
+    "https://*.atlassian.net/*",
     "http://calendar.google.com/calendar/*",
     "https://calendar.google.com/calendar/*",
     "https://login.microsoftonline.com/common/oauth2/v2.0/*",

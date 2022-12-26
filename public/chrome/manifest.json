@@ -75,12 +75,13 @@
     "activeTab",
     "storage",
     "idle",
-    "scripting"
-  ],
-  "optional_permissions": [
+    "scripting",
     "unlimitedStorage",
     "identity",
     "tabs"
+  ],
+  "host_permissions": [
+    "https://*.atlassian.net/*"
   ],
   "optional_host_permissions": [
     "http://*/",

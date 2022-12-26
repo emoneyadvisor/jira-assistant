@@ -60,4 +60,4 @@ permissions:
     - read:jira-work
     - write:jira-work
 app:
-  id: ari:cloud:ecosystem::app/3864d3bc-aad3-4650-ac35-e15af61fd92d
+  id: ari:cloud:ecosystem::app/23d5a83f-993b-4bfb-9a2b-65d808190e86

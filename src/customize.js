@@ -6,17 +6,17 @@ const config = {
 
         // Activities
         calendar: true,
-        importWorklog: true,
-        importIssues: true,
-        planningPoker: !isPluginBuild,
+        importWorklog: false,
+        importIssues: false,
+        planningPoker: false,
 
         // Reports
         worklogReport: true,
         worklogReportOld: true,
-        sprintReport: !isPluginBuild,
-        customReport: true,
-        estimateVsActual: true,
-        reportBuilder: true,
+        sprintReport: false,
+        customReport: false,
+        estimateVsActual: false,
+        reportBuilder: false,
 
         // Settings
         userGroups: true,
@@ -24,15 +24,15 @@ const config = {
         advancedSettings: true,
 
         // Others
-        contactUs: !isPluginBuild,
-        contribute: !isPluginBuild
+        contactUs: false,
+        contribute: false
     },
     features: {
         header: {
-            shareWithOthers: true,
+            shareWithOthers: false,
             themes: true,
-            youtubeHelp: !isPluginBuild,
-            devUpdates: !isPluginBuild,
+            youtubeHelp: false,
+            devUpdates: false,
             jiraUpdates: true
         },
         dashboard: {
@@ -40,16 +40,16 @@ const config = {
             manageGadgets: true
         },
         integrations: {
-            googleCalendar: !isPluginBuild,
+            googleCalendar: false,
             outlookCalendar: !isPluginBuild
         },
         common: {
-            analytics: !isPluginBuild,
-            allowWebVersion: !isPluginBuild
+            analytics: false,
+            allowWebVersion: false
         }
     },
     settings: {
-        defaultIntegratUrl: ''
+        defaultIntegratUrl: 'https://emoneyadvisor.atlassian.net'
     }
 };
 
