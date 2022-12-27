@@ -16,7 +16,7 @@ on:
         - production
       jiraSiteUrl:
         description: 'Jira cloud host name'
-        default: 'jira-ja.atlassian.net'
+        default: 'emoneyadvisor.atlassian.net'
         required: true
         type: string
       firstInstall:
