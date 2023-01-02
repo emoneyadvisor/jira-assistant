@@ -49,9 +49,6 @@ class Calendar extends BaseGadget {
         this.hideMenu = !props.isGadget;
         this.hideRefresh = true;
         this.hideExport = true;
-        if (props.isGadget) {
-            this.className = "calendar-view";
-        }
 
         if (this.$session.pageSettings.calendar) {
             this.state.settings = Object.assign({ showMeetings: true, showWorklogs: true, showInfo: true }, this.$session.pageSettings.calendar);
@@ -59,7 +56,7 @@ class Calendar extends BaseGadget {
         else {
             this.state.settings = { viewMode: 'timeGridWeek', showMeetings: true, showWorklogs: true, showInfo: true };
         }
-
+        this.setGadgetClass(this.state.settings);
         this.setMenuItems();
 
         this.CurrentUser = this.$session.CurrentUser;
@@ -73,9 +70,18 @@ class Calendar extends BaseGadget {
             this.minTime = this.minTime * 60 * 60;
         }
 
-        this.fullCalendarOpts = this.getCalendarOptions();
+        this.fullCalendarOpts = this.getCalendarOptions(this.state);
 
         //moment = (date) => toMoment(date, this.calendar)
+    }
+
+    setGadgetClass({ rowBanding }) {
+        const addlClass = rowBanding ? ' cal-row-banding' : '';
+        if (this.props.isGadget) {
+            this.className = `calendar-view${addlClass}`;
+        } else {
+            this.className = addlClass;
+        }
     }
 
     getHint() {
@@ -84,6 +90,7 @@ class Calendar extends BaseGadget {
             {meetingInfo}
             <li>Drag and drop or resize the worklog to edit it</li>
             <li>Right click worklog to see more options</li>
+            <li>You can change the hours grid in calendar by changing the working<br />and display hours in General Settings page</li>
         </ul>);
     }
 
@@ -131,14 +138,14 @@ class Calendar extends BaseGadget {
         ];
     }
 
-    getCalendarOptions() {
+    getCalendarOptions({ fullView }) {
         const {
             startOfDay, endOfDay,
-            startOfDayDisp, endOfDayDisp,
             startOfWeek, workingDays,
             timeFormat
         } = this.CurrentUser;
         const { viewMode } = (this.isGadget ? this.props : this.state.settings);
+        const { startOfDayDisp, endOfDayDisp } = fullView ? { startOfDayDisp: '00:00', endOfDayDisp: '23:59' } : this.CurrentUser;
 
         let firstDay = startOfWeek;
         if (firstDay && firstDay > 0) {
@@ -845,18 +852,24 @@ class Calendar extends BaseGadget {
         }
     };
 
-    uploadWorklog(all) {
+    async uploadWorklog(all) {
         this.setState({ uploading: true });
 
         hideContextMenu();
         if (all) {
-            const worklogs = this.getPendingWorklogs().map(e => e.sourceObject.id);
-            this.$worklog.uploadWorklogs(worklogs)
-                .then(() => {
-                    this.$message.success(`${worklogs.length} worklog(s) uploaded successfully!`);
-                    this.$analytics.trackEvent("Worklog uploaded: All", EventCategory.UserActions);
-                }, (err) => err.response && this.$message.error(err.response))
-                .finally(this.refreshData);
+            try {
+                const worklogs = this.getPendingWorklogs().map(e => e.sourceObject.id);
+                await this.$worklog.uploadWorklogs(worklogs);
+                this.$message.success(`${worklogs.length} worklog(s) uploaded successfully!`);
+                this.$analytics.trackEvent("Worklog uploaded: All", EventCategory.UserActions);
+            } catch (err) {
+                if (err.message || err.response) {
+                    this.$message.error(err.message || err.response);
+                }
+            }
+            finally {
+                this.refreshData();
+            }
         }
         else {
             this.uploadSelectedWorklog(this.currentWLItem.id);
@@ -875,8 +888,8 @@ class Calendar extends BaseGadget {
             this.addEvent({ added: this.$worklog.getWLCalendarEntry(wl[0]) });
             this.$analytics.trackEvent("Worklog uploaded: Individual", EventCategory.UserActions);
         } catch (err) {
-            if (err.response) {
-                this.$message.error(err.response);
+            if (err.message || err.response) {
+                this.$message.error(err.message || err.response);
             }
         } finally {
             this.setState({ uploading: false });
@@ -937,22 +950,31 @@ class Calendar extends BaseGadget {
         }
 
         this.$session.pageSettings.calendar = settings;
+        this.setGadgetClass(settings);
         this.setState({ settings }, (noRefresh !== true ? this.refreshData : null));
 
         this.$config.saveSettings('calendar', settings);
     };
 
+    toggleDisplayHours = () => this.setState(({ fullView }) => {
+        const newState = { fullView: !fullView };
+        this.fullCalendarOpts = this.getCalendarOptions(newState);
+        return newState;
+    });
+
     renderCustomActions() {
         const {
             isGadget,
-            state: { pendingWorklogCount, isLoading, uploading }
+            state: { pendingWorklogCount, isLoading, uploading, fullView, settings: { viewMode } }
         } = this;
-
+        const isGridMode = viewMode === 'timeGridWeek' || viewMode === 'timeGridDay';
         return <>
+            {isGridMode && <Button type="secondary" icon={fullView ? 'fa fa-compress' : 'fa fa-expand'} onClick={this.toggleDisplayHours}
+                title={fullView ? "Click to show only working hours in calendar" : "Click to show full day calendar"} />}
             {!this.isGadget && <>
                 <Button icon="fa fa-arrow-left" onClick={() => this.calendar.getApi().prev()} />
                 <Button icon="fa fa-arrow-right" onClick={() => this.calendar.getApi().next()} />
-                <SelectBox dataset={viewModes} value={this.state.settings.viewMode} valueField="value" displayField="label" placeholder="Select a view mode" onChange={this.viewModeChanged} />
+                <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" placeholder="Select a view mode" onChange={this.viewModeChanged} />
             </>}
             <span className="info-badge" title={pendingWorklogCount ? `Upload ${pendingWorklogCount} pending worklog(s)` : 'No worklog pending to be uploaded'}>
                 {pendingWorklogCount > 0 && <span className="info btn-warning">{pendingWorklogCount}</span>}

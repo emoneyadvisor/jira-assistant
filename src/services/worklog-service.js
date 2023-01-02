@@ -68,6 +68,7 @@ export default class WorklogService extends BaseService {
                                     logUpdated: moment(worklog.updated || worklog.created).toDate(),
                                     comment: worklog.comment,
                                     totalHours: `${parseInt((mins / 60).toString()).pad(2)}:${parseInt((mins % 60).toString()).pad(2)}`,
+                                    totalMins: mins,
                                     worklogId: worklog.id
                                 });
                             }
@@ -146,6 +147,10 @@ export default class WorklogService extends BaseService {
             //visibility = new Visibility { type="group", value= "Deployment Team" }
         };
 
+        const { notifyUsers } = this.$session.CurrentUser;
+        if (typeof notifyUsers === 'boolean') {
+            request.notifyUsers = notifyUsers;
+        }
         let uploadRequest = null;
 
         if (worklogId > 0) {
@@ -157,10 +162,15 @@ export default class WorklogService extends BaseService {
 
         return uploadRequest.then(null, (err) => {
             if (err.status === 400) {
+                console.error(`Error uploading worklog to ${ticketNo}.`, err);
                 const errors = (err.error || {}).errorMessages || [];
-                if (errors.some((e) => e.indexOf("non-editable") > -1)) {
-                    return Promise.reject({ message: `${ticketNo} is already closed and cannot upload worklog` });
+                let message = null;
+                if (errors.some((e) => e.includes("non-editable") || e.includes("permission"))) {
+                    message = `Permission denied to log work on ${ticketNo}`;
+                } else {
+                    message = `Unable to upload worklog for ${ticketNo}. Look at console for more details`;
                 }
+                return Promise.reject({ message });
             }
             return Promise.reject(err);
         });
@@ -210,6 +220,7 @@ export default class WorklogService extends BaseService {
                 id: DummyWLId,
                 isUploaded: true,
                 timeSpent: ld.totalHours,
+                totalMins: ld.totalMins,
                 ticketNo: ld.ticketNo,
                 worklogId: ld.worklogId
                 //parentId:0 - ToDo: Something to be thought of
@@ -219,6 +230,13 @@ export default class WorklogService extends BaseService {
         let modProm = Promise.all([prom, uploadedWL])
             .then((wls) => {
                 const pending = wls[0].filter(w => !w.isUploaded && !w.worklogId);
+
+                const getTotalSecs = this.$utils.getTotalSecs;
+                pending.forEach(wl => {
+                    const timeSpent = wl.overrideTimeSpent || wl.timeSpent;
+                    wl.totalMins = getTotalSecs(timeSpent) / 60;
+                });
+
                 wls[1].forEach(w => {
                     const relWL = wls[0].first(rw => rw.worklogId === w.worklogId);
                     if (relWL) {
