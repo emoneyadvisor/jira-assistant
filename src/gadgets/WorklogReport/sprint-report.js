@@ -1,13 +1,13 @@
 import moment from 'moment';
 import { getUserName } from '../../common/utils';
 import { inject } from "../../services/injector-service";
-import { generateUserDayWiseData, getUserWiseWorklog } from './userdaywise/utils_group';
+import { generateUserDayWiseData, getEpicDetails, getUserWiseWorklog } from './userdaywise/utils_group';
 import { generateFlatWorklogData, getFieldsToFetch } from './utils';
 
 export function generateSprintReport(setState, getState) {
     return async function () {
         const curState = getState();
-        const { selSprints: sel, sprintStartRounding, sprintEndRounding } = curState;
+        const { selSprints: sel, sprintStartRounding, sprintEndRounding, daysToHide, timeZone } = curState;
 
         const selBoards = Object.keys(sel).filter(bid => sel[bid]?.selected);
         if (!selBoards.length) { return; }
@@ -37,7 +37,9 @@ export function generateSprintReport(setState, getState) {
 
                     const settings = {
                         fromDate: fromDate.toDate(),
-                        toDate: toDate.toDate()
+                        toDate: toDate.toDate(),
+                        timeZone,
+                        daysToHide
                     };
 
                     if (sprintStartRounding === '2') {
@@ -56,12 +58,13 @@ export function generateSprintReport(setState, getState) {
                         settings.toDate = moment(new Date(nextSprintStart)).add(-1, 'seconds').toDate();
                     }
 
-                    const issuesList = await pullIssuesFromSprint(id, settings.fromDate, settings.toDate, curState);
+                    const { issues: issuesList, epicDetails } = await pullIssuesFromSprint(id, settings.fromDate, settings.toDate, curState);
                     if (!issuesList.length) {
                         newState[`groupReport_${id}`] = null;
                         continue;
                     }
-                    const { userwiseLog, userwiseLogArr } = getUserWiseWorklog(issuesList, moment(settings.fromDate), moment(settings.toDate), name?.toLowerCase(), curState);
+
+                    const { userwiseLog, userwiseLogArr } = getUserWiseWorklog(issuesList, moment(settings.fromDate), moment(settings.toDate), name?.toLowerCase(), curState, epicDetails);
 
                     const { groupReport, flatWorklogs } = generateSprintGroupReport(sprint, userwiseLog, settings, curState);
                     flatWorklogs_board.addRange(flatWorklogs);
@@ -191,21 +194,25 @@ function getSprintsSelected(boardId, boards, allSprints) {
 }
 
 async function pullIssuesFromSprint(sprintId, worklogStartDate, worklogEndDate, state) {
-    const { $jira } = inject('JiraService');
-    const { fieldsToFetch } = getFieldsToFetch();
+    const { $jira, $session: { CurrentUser: { epicNameField } } } = inject('JiraService', 'SessionService');
+
+    const { fieldsToFetch } = getFieldsToFetch(state, epicNameField?.id);
     const request = { maxResults: 1000, fields: fieldsToFetch, worklogStartDate, worklogEndDate };
     if (state.jql?.trim()) {
         request.jql = state.jql?.trim();
     }
     const issues = await $jira.getSprintIssues(sprintId, request);
 
-    return issues;
+    const epicDetails = issues.length > 0 && await getEpicDetails(issues, epicNameField?.id);
+
+    return { issues, epicDetails };
 }
 
-function generateSprintGroupReport(sprint, data, settings, { userListMode, userGroups }) {
+function generateSprintGroupReport(sprint, data, settings, state) {
+    const { userListMode, userGroups } = state;
     const groups = userListMode === '2' ? userGroups : generateGroupForSprint(sprint, data, settings);
 
-    const groupReport = generateUserDayWiseData(data, groups, settings);
+    const groupReport = generateUserDayWiseData(data, groups, settings, state);
     const flatWorklogs = generateFlatWorklogData(data, groups, sprint.name);
 
     return { groupReport, flatWorklogs };

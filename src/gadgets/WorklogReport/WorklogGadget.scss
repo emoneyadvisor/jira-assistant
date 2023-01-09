@@ -51,6 +51,16 @@ td.day-wl-block {
   }
 }
 
+tbody:not(.no-log-bg-hl) {
+  td.col-holiday {
+    background-color: #ffe7d2 !important;
+
+    &:hover span.add-wl {
+      display: none;
+    }
+  }
+}
+
 td .user-info {
   min-height: 42px;
   padding: 5px 15px;
