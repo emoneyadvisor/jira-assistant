@@ -1,6 +1,6 @@
 import moment from 'moment';
 import { inject } from "../../services/injector-service";
-import { getSettingsObj } from "./datastore";
+import { getSettingsObj, getSprintsList } from "./datastore";
 import { generateRangeReport } from "./range-report";
 import { generateSprintReport } from "./sprint-report";
 
@@ -9,7 +9,7 @@ export function setStateValue(setState) {
 }
 
 export function getSettingsToStore(_, getState) {
-    return function () { return getSettingsObj(getState()); };
+    return function (opts) { return getSettingsObj(getState(), opts); };
 }
 
 export function fillSprintList(setState, getState) {
@@ -53,24 +53,6 @@ export function hideWorklog(setState) {
     return function () {
         setState({ showWorklogPopup: false, worklogItem: null });
     };
-}
-
-export function getSprintsList({ sprintBoards, sprintList }) {
-    if (!sprintBoards || !sprintList) {
-        return { sprints: [], allSprints: {} };
-    }
-
-    const sprints = sprintBoards.map(b => ({
-        label: b.name,
-        isGroup: true,
-        items: sprintList[b.id]?.map(({ name, id }) => ({ value: id, label: name }))
-    }));
-    const allSprints = Object.keys(sprintList).reduce((obj, grp) => {
-        sprintList[grp]?.forEach(spr => obj[spr.id] = spr);
-        return obj;
-    }, {});
-
-    return { sprints, allSprints };
 }
 
 export function fetchData(setState, getState) {

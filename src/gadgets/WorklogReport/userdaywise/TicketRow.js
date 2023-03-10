@@ -22,11 +22,11 @@ function TicketRow({
             {!!showAssignee && <td>{t.assignee}</td>}
             {!!showReporter && <td>{t.reporter}</td>}
 
-            {isSprint && sprintsList.map(({ id }) => <IssueDays key={id} convertSecs={convertSecs} groupIndex={groupIndex}
+            {isSprint && sprintsList.map(({ id }) => <IssueDays key={id} convertSecs={convertSecs} groupIndex={groupIndex} costView={costView}
                 sprintId={id} uid={uid} formatTime={formatTime} ticketNo={t.ticketNo} isSprint={isSprint} timeExportFormat={timeExportFormat}
                 addNewWorklog={addNewWorklog} />)}
             {!isSprint && <IssueDays convertSecs={convertSecs} groupIndex={groupIndex} timeExportFormat={timeExportFormat}
-                uid={uid} formatTime={formatTime} ticketNo={t.ticketNo} isSprint={isSprint}
+                uid={uid} formatTime={formatTime} ticketNo={t.ticketNo} isSprint={isSprint} costView={costView}
                 addNewWorklog={addNewWorklog} />}
 
             {isSprint && costView && <td>{t.allSprintTotalCost}</td>}
@@ -35,7 +35,7 @@ function TicketRow({
     );
 }
 
-export default connect(TicketRow, ({ fields, costView }) => ({ fields, costView }), null,
+export default connect(TicketRow, ({ fields }) => ({ fields }), null,
     [
         'UserUtilsService',
         ({ $userutils: { formatTime } }) => ({ formatTime })
@@ -43,14 +43,14 @@ export default connect(TicketRow, ({ fields, costView }) => ({ fields, costView 
 );
 
 const IssueDays = connect(function ({ costView, dates, timeExportFormat,
-    breakupMode, ticket: t, user: u,
+    breakupMode, ticket: t, user: u, disableAddingWL,
     addNewWorklog, convertSecs, formatTime }) {
     const getComments = (arr, showCost) => {
         if (!arr || arr.length === 0) {
             return "";
         }
 
-        return arr.map((a) => `${formatTime(a.logTime)}(${convertSecs(a.totalHours)})${(showCost ? (`, Cost: ${a.totalCost}`) : '')} - ${a.comment}`).join(';\n');
+        return arr.map((a) => `${formatTime(a.logTime)} (${convertSecs(a.totalHours)})${(showCost ? (`, Cost: ${a.totalCost}`) : '')} - ${a.comment || '(no comment provided)'}`).join(';\n');
     };
 
     if (costView) {
@@ -63,7 +63,7 @@ const IssueDays = connect(function ({ costView, dates, timeExportFormat,
     } else {
         return (<>
             {
-                dates.map((day, j) => <IssueLog key={j} timeExportFormat={timeExportFormat}
+                dates.map((day, j) => <IssueLog key={j} timeExportFormat={timeExportFormat} disableAddingWL={disableAddingWL}
                     breakupMode={breakupMode} addNewWorklog={addNewWorklog} convertSecs={convertSecs} user={u}
                     getComments={getComments} formatTime={formatTime} day={day} issue={t} />)
             }
@@ -71,7 +71,7 @@ const IssueDays = connect(function ({ costView, dates, timeExportFormat,
         </>);
     }
 }, (state, { isSprint, groupIndex, sprintId, uid, ticketNo }) => {
-    const { costView, breakupMode,
+    const { breakupMode, disableAddingWL,
         [isSprint ? `groupReport_${sprintId}` : 'groupReport']: {
             dates,
             groupedData: {
@@ -84,7 +84,7 @@ const IssueDays = connect(function ({ costView, dates, timeExportFormat,
     } = state;
 
     return {
-        costView, breakupMode, dates, user,
+        breakupMode, dates, user, disableAddingWL,
         ticket: user?.ticketsMap?.[ticketNo] || {}
     };
 });
@@ -109,7 +109,7 @@ function IssueInfo({ issue: t, showParentSummary, hideEstimate, convertSecs }) {
 }
 
 function IssueLog({
-    issue: t, user: u = {}, day, timeExportFormat, breakupMode,
+    issue: t, user: u = {}, day, timeExportFormat, breakupMode, disableAddingWL,
     getComments, addNewWorklog, formatTime, convertSecs
 }) {
     const { logs = {} } = t;
@@ -123,7 +123,7 @@ function IssueLog({
     }
 
     return (<td className={`day-wl-block${day.isHoliday ? (!logTime?.length ? ' col-holiday' : ' log-high') : ''}`} exportType={timeExportFormat} data-test-id={day.prop}>
-        {u?.isCurrentUser && <span className="fa fa-clock-o add-wl" title="Click to add worklog"
+        {u?.isCurrentUser && disableAddingWL !== true && <span className="fa fa-clock-o add-wl" title="Click to add worklog"
             onClick={() => addNewWorklog(t.ticketNo, day)} />}
         {breakupMode !== '2' && <span title={getComments(logTime)}>{convertSecs(getTotalTime(logTime))}</span>}
         {breakupMode === '2' && <div> {getLogEntries(logTime)}</div>}

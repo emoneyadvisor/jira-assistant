@@ -48,7 +48,7 @@ function UserRow({
             {isSprint && !costView && <td exportType={timeExportFormat}>{convertSecs(u.allSprintTotalHours)}</td>}
         </tr>
 
-        {expanded && <UserTickets isSprint={isSprint} groupIndex={groupIndex} boardId={boardId} uid={uid} user={u}
+        {expanded && <UserTickets isSprint={isSprint} groupIndex={groupIndex} boardId={boardId} uid={uid} user={u} costView={costView}
             sprintsList={sprintsList} addNewWorklog={addNewWorklog} convertSecs={convertSecs} timeExportFormat={timeExportFormat} />}
     </>);
 }
@@ -57,9 +57,9 @@ function UserRow({
 
 export default connect(UserRow,
     (state, { boardId }) => {
-        const { userDisplayFormat, costView, timeframeType } = state;
+        const { userDisplayFormat, timeframeType } = state;
         const isSprint = timeframeType === '1';
-        const result = { costView, isSprint, userDisplayFormat };
+        const result = { isSprint, userDisplayFormat };
 
         if (isSprint) {
             result.sprintsList = state[`sprintsList_${boardId}`];
@@ -73,7 +73,7 @@ export default connect(UserRow,
 
 const UserDatesDisplay = connect(function ({
     costView, dates, user: u,
-    timeExportFormat, addNewWorklog, convertSecs, maxHours, rIndicator
+    timeExportFormat, addNewWorklog, convertSecs, maxHours, rIndicator, disableAddingWL
 }) {
     if (costView) {
         return (<>{dates.map((day, i) => <td key={i} className={`${u.logClass[day.prop]} day-wl-block`}
@@ -81,25 +81,25 @@ const UserDatesDisplay = connect(function ({
             <td data-test-id="total" exportType="float">{u.grandTotalCost}</td></>);
     } else {
         return (<>{dates.map((day, i) => <td key={i} className={`${u.logClass[day.prop]} day-wl-block`} exportType={timeExportFormat} data-test-id={day.prop}>
-            {u.isCurrentUser && <span className="fa fa-clock-o add-wl" title="Click to add worklog" onClick={() => addNewWorklog(null, day)} />}
+            {u.isCurrentUser && disableAddingWL !== true && <span className="fa fa-clock-o add-wl" title="Click to add worklog" onClick={() => addNewWorklog(null, day)} />}
             {convertSecs(u.total[day.prop])}
             {rIndicator === '1' && <Indicator value={u.total[day.prop]} maxHours={maxHours} />}
         </td>)}
             <td exportType={timeExportFormat} data-test-id="total">{convertSecs(u.grandTotal)}</td></>);
     }
 }, (state, { sprintId, groupIndex, uid }) => {
-    const { costView, timeframeType,
+    const { timeframeType,
         [timeframeType === '1' ? `groupReport_${sprintId}` : 'groupReport']:
-        { dates, groupedData: group }, maxHours, rIndicator
+        { dates, groupedData: group }, maxHours, rIndicator, disableAddingWL
     } = state;
 
     return {
-        costView, dates, group, maxHours, rIndicator,
+        dates, group, maxHours, rIndicator, disableAddingWL,
         user: group[groupIndex].usersMap[uid] || { logClass: {}, total: {}, totalCost: {} }
     };
 });
 
-function UserTickets({ user, isSprint, groupIndex, sprintsList, uid, timeExportFormat, addNewWorklog, convertSecs }) {
+function UserTickets({ user, isSprint, groupIndex, sprintsList, uid, timeExportFormat, addNewWorklog, convertSecs, costView }) {
     return user.tickets.map((t, i) => <TicketRow key={i} isSprint={isSprint} groupIndex={groupIndex} issue={t} user={user} uid={uid}
-        addNewWorklog={addNewWorklog} sprintsList={sprintsList} timeExportFormat={timeExportFormat} convertSecs={convertSecs} />);
+        addNewWorklog={addNewWorklog} sprintsList={sprintsList} timeExportFormat={timeExportFormat} convertSecs={convertSecs} costView={costView} />);
 }

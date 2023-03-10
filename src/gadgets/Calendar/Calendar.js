@@ -1,14 +1,15 @@
 import React from 'react';
-import config from '../../customize';
-import BaseGadget from '../BaseGadget';
-import { inject } from '../../services/injector-service';
-import { GadgetActionType } from '../_constants';
+import * as moment from 'moment';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listWeekPlugin from '@fullcalendar/list';
+import momentPlugin from '@fullcalendar/moment';
 import interactionPlugin from '@fullcalendar/interaction';
-import * as moment from 'moment';
+import config from '../../customize';
+import BaseGadget from '../BaseGadget';
+import { inject } from '../../services/injector-service';
+import { GadgetActionType } from '../_constants';
 import Button from '../../controls/Button';
 import SelectBox from '../../controls/SelectBox';
 import { hideContextMenu, showContextMenu } from '../../externals/jsd-report';
@@ -16,10 +17,10 @@ import AddWorklog from '../../dialogs/AddWorklog';
 import { OverlayPanel } from 'primereact/overlaypanel';
 import MeetingDetails from './MeetingDetails';
 import CalendarSettings from './Settings';
-import { DefaultEndOfDay, DefaultStartOfDay, DefaultWorkingDays, EventCategory } from '../../constants/settings';
-import './Calendar.scss';
+import { DefaultEndOfDay, DefaultStartOfDay, DefaultWorkingDays, EventCategory, momentizedDateFormats } from '../../constants/settings';
 import { WorklogContext } from '../../common/context';
 import ChangeTracker from '../../components/ChangeTracker';
+import './Calendar.scss';
 
 const viewModes = [
     { value: 'dayGridMonth', label: 'Month' }, { value: 'timeGridWeek', label: 'Week' }, { value: 'timeGridDay', label: 'Day' },
@@ -27,7 +28,7 @@ const viewModes = [
     { value: 'dayGridWeek', label: 'Grid Week' }, { value: 'dayGridDay', label: 'Grid Day' }
 ];
 
-const availablePlugins = [dayGridPlugin, timeGridPlugin, interactionPlugin, listWeekPlugin];
+const availablePlugins = [dayGridPlugin, timeGridPlugin, interactionPlugin, listWeekPlugin, momentPlugin];
 
 const { googleCalendar, outlookCalendar } = config.features.integrations;
 const showMeetings = outlookCalendar !== false || googleCalendar !== false;
@@ -63,6 +64,7 @@ class Calendar extends BaseGadget {
         //this.defaultView = this.state.settings.viewMode || "month";
         this.maxTime = this.CurrentUser.maxHours;
         this.minTime = this.CurrentUser.minHours || this.maxTime;
+        this.dateFormat = this.CurrentUser.dateFormat;
         if (this.maxTime) {
             this.maxTime = this.maxTime * 60 * 60;
         }
@@ -158,12 +160,25 @@ class Calendar extends BaseGadget {
         const hour12 = (timeFormat || "").indexOf("tt") > -1;
         const meridiem = hour12 ? "short" : false;
 
+        /* Temporarily disabled date formatting in header as it shows wrong date
+        let dayHeaderFormat = this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined;
+        if (dayHeaderFormat) {
+            dayHeaderFormat = dayHeaderFormat.replace('YYYY', '').replace(/-/g, '/').clearStart(['/', ',', ' ']).clearEnd(['/', ',', ' ']);
+            if (!dayHeaderFormat.includes('ddd')) {
+                dayHeaderFormat = `ddd, ${dayHeaderFormat}`;
+            }
+        }*/
+
         return {
             plugins: availablePlugins,
             timeZone: 'local',
             // selectHelper: true, //ToDo: need to check what is this // ToDo: Prop changed
 
             weekends: true,
+
+            titleFormat: this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined,
+            //dayHeaderFormat, //Temporarily disabled date formatting in header as it shows wrong date
+            //eventMinHeight: 25,
 
             // Event Display
             displayEventTime: true,
@@ -309,7 +324,7 @@ class Calendar extends BaseGadget {
             this.setEventsData(data);
         };
 
-        const req = [this.$worklog.getWorklogsEntry(start, end)];
+        const req = [this.$worklog.getWorklogsEntry(start, end, ['worklog', 'summary'])];
 
         if (this.CurrentUser.googleIntegration && this.CurrentUser.hasGoogleCredentials && this.state.settings.showMeetings) {
             req.push(this.$calendar.getEvents(start, end).then(null, (err) => {
@@ -709,7 +724,7 @@ class Calendar extends BaseGadget {
         const { view } = event;
         this.startDate = view.activeStart;
         this.endDate = view.activeEnd;
-        this.title = `Calendar - [${view.title.replace(/[^a-zA-Z0-9, ]+/g, '-')}]`;
+        this.title = `Calendar - [${view.title.replace(/[^a-zA-Z0-9, /]+/g, '-')}]`;
         this.saveSettings({ ...this.state.settings, viewMode: view.type });
     }
 
@@ -793,9 +808,21 @@ class Calendar extends BaseGadget {
 
         const hourDiff = ` (${this.$utils.formatTs(this.getEventDuration(event))})`;
         const srcObj = event.extendedProps.sourceObject;
-        let title;
+        let evTitle = event.title;
+        let subTitle = '', title;
+
+        if (entryType === 1) {
+            const { detailsMode } = this.state.settings;
+
+            if (detailsMode === '2') {
+                evTitle = `${srcObj?.ticketNo} - ${srcObj?.summary}`;
+            } else if (detailsMode === '3') {
+                subTitle = srcObj?.summary;
+            }
+        }
+
         if (srcObj) {
-            title = `${timeText} ${hourDiff}\n${event.title}`;
+            title = `${timeText} ${hourDiff}\n${evTitle}`;
         }
 
         let leftIcon;
@@ -840,6 +867,9 @@ class Calendar extends BaseGadget {
         }
 
         if (type === 'timeGridWeek' || type === 'timeGridDay') {
+            const lines = (evTitle ? 3 : 0) + (subTitle ? 3 : 0);
+            const clsName = (lines * 30 > srcObj.totalMins ? ' short-desc' : '');
+
             return (<div ref={(e) => e?.parentElement?.parentElement?.addEventListener('contextmenu', contextEvent)}
                 className="fc-content pad-8" title={title} data-jira-key={srcObj?.ticketNo} data-jira-wl-id={srcObj?.worklogId}>
                 {entryType === 1 && <WorklogOptions worklog={srcObj} onUpload={this.uploadSelectedWorklog} onClone={this.cloneWorklog} />}
@@ -848,7 +878,8 @@ class Calendar extends BaseGadget {
                     <span>{timeText}</span>
                     <span className="fc-hour"> {hourDiff}</span>
                 </div>
-                <div className="fc-title">{event.title}</div>
+                <div className={`fc-title${clsName}`}>{evTitle}</div>
+                {!!subTitle && <div className={`fc-sub-title${clsName}`} title={subTitle}>{subTitle}</div>}
             </div>);
         }
     };
@@ -963,6 +994,8 @@ class Calendar extends BaseGadget {
         return newState;
     });
 
+    today = () => this.calendar.getApi().today();
+
     renderCustomActions() {
         const {
             isGadget,
@@ -972,10 +1005,11 @@ class Calendar extends BaseGadget {
         return <>
             {isGridMode && <Button type="secondary" icon={fullView ? 'fa fa-compress' : 'fa fa-expand'} onClick={this.toggleDisplayHours}
                 title={fullView ? "Click to show only working hours in calendar" : "Click to show full day calendar"} />}
+            <Button label="Today" onClick={this.today} title="Navigate to current week" />
             {!this.isGadget && <>
                 <Button icon="fa fa-arrow-left" onClick={() => this.calendar.getApi().prev()} />
                 <Button icon="fa fa-arrow-right" onClick={() => this.calendar.getApi().next()} />
-                <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" placeholder="Select a view mode" onChange={this.viewModeChanged} />
+                <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" style={{ width: '120px' }} onChange={this.viewModeChanged} />
             </>}
             <span className="info-badge" title={pendingWorklogCount ? `Upload ${pendingWorklogCount} pending worklog(s)` : 'No worklog pending to be uploaded'}>
                 {pendingWorklogCount > 0 && <span className="info btn-warning">{pendingWorklogCount}</span>}
