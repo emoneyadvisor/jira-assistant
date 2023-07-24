@@ -1,7 +1,7 @@
 import * as moment from 'moment';
 import { ApiUrls } from '../constants/api-urls';
 import { DummyWLId } from '../constants/common';
-import { getUserName } from '../common/utils';
+import { getUserName, prepareUrlWithQueryString } from '../common/utils';
 import BaseService from './base-service';
 
 export default class WorklogService extends BaseService {
@@ -87,8 +87,9 @@ export default class WorklogService extends BaseService {
                 const wlList = worklogs.map((w) => {
                     const fields = (tickets[w.ticketNo.toUpperCase()] || {}).fields || {};
                     const data = w;
+                    data.assignee = fields.assignee?.displayName || "(unassigned)";
                     data.summary = fields.summary || "(unavailable)";
-                    data.status = (fields.status || "").name || "(unavailable)";
+                    data.status = fields.status?.name || "(unavailable)";
                     return data;
                 });
                 return wlList;
@@ -115,10 +116,10 @@ export default class WorklogService extends BaseService {
         }).then(res => (sameObjects ? res : this.getPendingWorklogs()));
     }
 
-    uploadWorklog(entry) {
+    uploadWorklog(entry, opts) {
         const timeSpent = entry.overrideTimeSpent || entry.timeSpent;
 
-        const uploadRequest = this.upload(entry.ticketNo, entry.dateStarted, timeSpent, entry.description, entry.worklogId);
+        const uploadRequest = this.upload(entry.ticketNo, entry.dateStarted, timeSpent, entry.description, entry.worklogId, opts);
 
         return uploadRequest.then((result) => {
             entry.worklogId = result.id;
@@ -140,7 +141,27 @@ export default class WorklogService extends BaseService {
         });
     }
 
-    upload(ticketNo, dateStarted, timeSpent, comment, worklogId) {
+    upload(ticketNo, dateStarted, timeSpent, comment, worklogId, opts) {
+        if (opts && typeof opts !== 'object') {
+            opts = undefined;
+        }
+        let { adjustEstimate, estimate } = opts || {};
+        if (!estimate && adjustEstimate !== 'leave') {
+            adjustEstimate = 'AUTO';
+        }
+
+        adjustEstimate = adjustEstimate || 'AUTO';
+
+        if (estimate) {
+            estimate = this.$utils.formatTs(estimate);
+        }
+
+        const query = {
+            adjustEstimate,
+            newEstimate: adjustEstimate === 'new' ? estimate : undefined,
+            reduceBy: adjustEstimate === 'manual' ? estimate : undefined
+        };
+
         const request = {
             comment,
             started: this.$utils.formatDateTimeForJira(dateStarted), // `${dateStarted.toISOString().replace('Z', '').replace('z', '')}+0000`,
@@ -148,17 +169,17 @@ export default class WorklogService extends BaseService {
             //visibility = new Visibility { type="group", value= "Deployment Team" }
         };
 
-        const { notifyUsers } = this.$session.CurrentUser;
-        if (typeof notifyUsers === 'boolean') {
+        const { notifyUsers, isAtlasCloud } = this.$session.CurrentUser;
+        if (isAtlasCloud && notifyUsers === false) {
             request.notifyUsers = notifyUsers;
         }
         let uploadRequest = null;
 
         if (worklogId > 0) {
-            uploadRequest = this.$ajax.put(ApiUrls.updateIndividualWorklog, request, ticketNo, worklogId);
+            uploadRequest = this.$ajax.put(prepareUrlWithQueryString(ApiUrls.updateIndividualWorklog, query), request, ticketNo, worklogId);
         }
         else {
-            uploadRequest = this.$ajax.post(ApiUrls.addIssueWorklog, request, ticketNo, worklogId || 0);
+            uploadRequest = this.$ajax.post(prepareUrlWithQueryString(ApiUrls.addIssueWorklog, query), request, ticketNo, worklogId || 0);
         }
 
         return uploadRequest.then(null, (err) => {
@@ -207,12 +228,21 @@ export default class WorklogService extends BaseService {
         return this.$storage.getSingleWorklogWithId(parseInt(`${worklogId}`));
     }*/
 
-    getWorklogs(range) {
+    getWorklogs(range, fields) {
         const curUserId = this.$session.userId;
         const fromDate = moment(range.fromDate).toDate();
         const toDate = moment(range.toDate).endOf('day').toDate();
-        const prom = this.$storage.getWorklogsBetween(fromDate, toDate, curUserId);
-        const uploadedWL = this.getUploadedWorklogs(fromDate, toDate).then(wl => {
+        const prom = this.$storage.getWorklogsBetween(fromDate, toDate, curUserId).then(async data => {
+            const pending = data.filter(w => !w.isUploaded && !w.worklogId);
+            const ticketNos = pending.distinct(w => w.ticketNo);
+            const ticketDetails = await this.$ticket.getTicketDetails(ticketNos, false, ['summary'], { allowCache: false });
+            pending.forEach(wl => {
+                wl.summary = ticketDetails[wl.ticketNo]?.fields?.summary || '';
+            });
+
+            return pending;
+        });
+        const uploadedWL = this.getUploadedWorklogs(fromDate, toDate, undefined, fields).then(wl => {
             const logData = wl.first().logData;
             const wlArr = logData.map(ld => ({
                 createdBy: curUserId,
@@ -224,14 +254,15 @@ export default class WorklogService extends BaseService {
                 totalSecs: ld.totalSecs,
                 totalMins: ld.totalMins,
                 ticketNo: ld.ticketNo,
-                worklogId: ld.worklogId
+                worklogId: ld.worklogId,
+                summary: ld.summary
                 //parentId:0 - ToDo: Something to be thought of
             }));
             return wlArr;
         });
         let modProm = Promise.all([prom, uploadedWL])
             .then((wls) => {
-                const pending = wls[0].filter(w => !w.isUploaded && !w.worklogId);
+                const pending = wls[0];
 
                 const getTotalSecs = this.$utils.getTotalSecs;
                 pending.forEach(wl => {
@@ -258,8 +289,8 @@ export default class WorklogService extends BaseService {
         return modProm;
     }
 
-    getWorklogsEntry(start, end) {
-        return this.getWorklogs({ fromDate: start.toDate(), toDate: end.toDate() })
+    getWorklogsEntry(start, end, fields) {
+        return this.getWorklogs({ fromDate: start.toDate(), toDate: end.toDate() }, fields)
             .then((worklogs) => {
                 const result = worklogs.map(w => this.getWLCalendarEntry(w));
                 return result;
@@ -319,12 +350,19 @@ export default class WorklogService extends BaseService {
         });
     }
 
-    getWorklog(worklog) {
+    async getWorklog(worklog) {
         if (worklog.isUploaded) {
             return this.$jira.getJAWorklog(worklog.worklogId, worklog.ticketNo);
         }
         else {
-            return this.$storage.getSingleWorklogWithId(worklog.id);
+            const wl = await this.$storage.getSingleWorklogWithId(worklog.id);
+
+            if (wl.overrideTimeSpent) {
+                wl.timeSpent = wl.overrideTimeSpent;
+                delete wl.overrideTimeSpent;
+            }
+
+            return wl;
         }
     }
 
@@ -356,8 +394,8 @@ export default class WorklogService extends BaseService {
             if (worklog.timeSpent) {
                 wl.timeSpent = worklog.timeSpent;
             }
-            if (worklog.overrideTimeSpent) {
-                wl.overrideTimeSpent = worklog.overrideTimeSpent;
+            if (worklog.overrideTimeSpent) { // ToDo: This block can be removed later
+                wl.timeSpent = worklog.overrideTimeSpent;
             }
             if (worklog.parentId) {
                 wl.parentId = worklog.parentId;
@@ -371,7 +409,7 @@ export default class WorklogService extends BaseService {
                 pro = this.$storage.addWorklog(worklog).then((id) => { worklog.id = id; });
             }
             if (upload || worklog.worklogId) {
-                pro = pro.then(() => this.uploadWorklog(worklog));
+                pro = pro.then(() => this.uploadWorklog(worklog, upload));
             }
             return pro.then(() => this.getWLCalendarEntry(worklog));
         }, (err) => { console.log("error for ticket number", err); return Promise.reject(err); });

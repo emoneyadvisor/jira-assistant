@@ -1,5 +1,6 @@
 import moment from "moment";
 import createStore from "../../common/store";
+import { inject } from "../../services";
 
 const initialData = {
     userListMode: '2', // 1=all logged users, 2=users from group, 3= from project, 4=from user and project
@@ -14,6 +15,8 @@ const initialData = {
     daysToHide: '1', // 1=show all days, 2=hide non working days,3=hide days without worklog
     rIndicator: '1', // 1=thermometer, 2=bg highlight,0=none
     timeZone: '1',
+    expandUsers: false,
+    splitWorklogDays: false,
 
     sprintStartRounding: '1',
     sprintEndRounding: '1',
@@ -29,12 +32,15 @@ const initialData = {
     loadingData: false, // Whether currently report data is being pulled
     reportLoaded: false, // Is report data pulled for selected input
 
+    disableAddingWL: false, // To disable adding worklog from report
+
     selSprints: {}, // user input {[boardId]: {selected:true, range:0, custom:{ [sprintId]:true }}}
     sprintBoards: [], // user selected sprint boards
     sprintList: {},
     allSprints: {},
 
-    sprints: []
+    sprints: [],
+    userExpnState: {} // This would contain [uid]: true when user is expanded in group
     //sprintsList_{boardId}:[{sprint}]
     //groupReport_{boardId}:{weeks:[],dates:[], groupedData:[{group}]}
 };
@@ -61,7 +67,7 @@ const { withProvider, connect } = createStore(initialData);
 
 export { withProvider, connect };
 
-export function getSettingsObj(data) {
+export function getSettingsObj(data, opts) {
     if (!data) {
         return {};
     }
@@ -80,6 +86,8 @@ export function getSettingsObj(data) {
         fields,
         daysToHide,
         rIndicator,
+        expandUsers,
+        splitWorklogDays,
         jql,
         logFilterType,
         filterThrsType,
@@ -88,7 +96,11 @@ export function getSettingsObj(data) {
         wlDateSelection,
         sprintBoards,
         sprintList,
-        selSprints = {}
+        selSprints = {},
+
+        userGroups,
+
+        flatTableSettings
     } = data;
 
     const toStore = removeUndefined({
@@ -105,6 +117,8 @@ export function getSettingsObj(data) {
         fields,
         daysToHide,
         rIndicator,
+        expandUsers,
+        splitWorklogDays,
         jql,
         logFilterType,
         filterThrsType,
@@ -113,17 +127,67 @@ export function getSettingsObj(data) {
         wlDateSelection,
         sprintBoards,
         sprintList,
-        selSprints
+        selSprints,
+        flatTableSettings: removeUndefined(flatTableSettings)
     });
 
     if (filterDate && moment(filterDate).isSame(new Date(), 'day')) {
         delete toStore.filterDate;
     }
 
+    if (opts?.incUserGroups) {
+        toStore.userGroups = userGroups;
+    }
+
     return toStore;
 }
 
+export async function getInitialSettings(storedSettings, addlSettings = {}) {
+    const { $session, $usergroup } = inject('SessionService', 'UserGroupService');
+    const { maxHours: maxHrs, projects, epicNameField, rapidViews: sprintBoardsFromSettings } = $session.CurrentUser;
+
+    const maxHours = (maxHrs || 8) * 60 * 60;
+
+    const settings = getSettingsObj(storedSettings);
+
+    if (sprintBoardsFromSettings?.length && !settings.sprintBoards?.length) {
+        settings.sprintBoards = sprintBoardsFromSettings;
+    }
+
+    const addl = getSprintsList(settings);
+
+    const userGroups = storedSettings.userGroups || await $usergroup.getUserGroups();
+
+    return {
+        userGroups, ...settings, ...addl, maxHours,
+        projects, epicField: epicNameField?.id,
+        sprintBoardsFromSettings, ...addlSettings // This field is used for comparison when saving local settings
+    };
+}
+
+export function getSprintsList({ sprintBoards, sprintList }) {
+    if (!sprintBoards || !sprintList) {
+        return { sprints: [], allSprints: {} };
+    }
+
+    const sprints = sprintBoards.map(b => ({
+        label: b.name,
+        isGroup: true,
+        items: sprintList[b.id]?.map(({ name, id }) => ({ value: id, label: name }))
+    }));
+    const allSprints = Object.keys(sprintList).reduce((obj, grp) => {
+        sprintList[grp]?.forEach(spr => obj[spr.id] = spr);
+        return obj;
+    }, {});
+
+    return { sprints, allSprints };
+}
+
 function removeUndefined(obj) {
+    if (typeof obj !== 'object') {
+        return obj;
+    }
+
     Object.keys(obj).forEach(k => {
         if (typeof obj[k] === 'undefined') {
             delete obj[k];

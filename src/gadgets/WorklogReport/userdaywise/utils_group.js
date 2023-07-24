@@ -212,14 +212,18 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
                 curTimeZone = grp.timeZone;
             }
 
-            const usrInfo = {
+            const worklogUser = {
                 name: getUserName(usr),
                 displayName: usr.displayName,
                 emailAddress: usr.emailAddress,
                 timeZone: curTimeZone,
                 imageUrl: usr.avatarUrls['48x48'] || usr.avatarUrls['32x32'],
-                profileUrl: usr.self,
-                costPerHour: usr.costPerHour,
+                profileUrl: svc.$userutils.getProfileUrl(usr),
+                costPerHour: usr.costPerHour
+            };
+
+            const usrInfo = {
+                ...worklogUser,
                 tickets: null,
                 total: {},
                 totalCost: {},
@@ -228,7 +232,7 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
                 grandTotalCost: 0
             };
 
-            const usrDta = data[usr.userName || getUserName(usr)] || {};
+            const usrDta = data[usr.userName || getUserName(usr, true)] || {};
 
             if (usrDta.isCurrentUser) {
                 usrInfo.isCurrentUser = true;
@@ -244,6 +248,7 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
                     const logs = {};
 
                     const ticket = {
+                        fields: { ...firstTkt.fields, worklogUser },
                         ticketNo: tGrp.key,
                         parent: firstTkt.parent,
                         parentUrl: firstTkt.parent ? viewIssueUrl(firstTkt.parent) : null,
@@ -267,6 +272,7 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
                         totalHours: 0,
                         totalCost: 0
                     };
+
                     ticketsMap[ticket.ticketNo] = ticket;
                     let totalHours = 0;
                     items.forEach(item => {
@@ -292,6 +298,9 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
                     ticket.totalCost = calcCostPerSecs(totalHours, usr.costPerHour);
                     return ticket;
                 });
+
+            arrangeTicketsByFirstWorklogDate(usrInfo, dates);
+
             // Set date wise total per user
             const logClass = usrInfo.logClass;
             const usrTotal = usrInfo.total;
@@ -316,7 +325,7 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
             usrInfo.grandTotal = usrGTotal;
             usrInfo.grandTotalCost = calcCostPerSecs(usrGTotal, usr.costPerHour);
             return usrInfo;
-        });
+        }).orderBy(u => u.firstWorklogStartIndex);
 
         grpInfo.usersMap = grpInfo.users.reduce((obj, u) => {
             obj[u.name] = u;
@@ -378,6 +387,18 @@ export function generateUserDayWiseData(data, groups, pageSettings) {
     return { groupedData, weeks: getWeekHeader(dates), dates };
 }
 
+function arrangeTicketsByFirstWorklogDate(user, dates) {
+    const tickets = user.tickets;
+
+    tickets.forEach(t => {
+        const { logs } = t;
+        t.worklogStartIndex = dates.findIndex(d => !!logs[d.prop]);
+    });
+
+    user.tickets = tickets.orderBy(t => t.worklogStartIndex);
+    user.firstWorklogStartIndex = user.tickets[0]?.worklogStartIndex;
+}
+
 export function filterDaysWithoutWorklog(daysToHide, dates) {
     if (!daysToHide || daysToHide === '1') {
         return dates;
@@ -395,6 +416,7 @@ export function filterDaysWithoutWorklog(daysToHide, dates) {
 
 function getLogUserObj(issue, fields, worklog, append, { epicNameField, epicDetails, $userutils }) {
     const obj = {
+        fields,
         ticketNo: issue.key,
         epicDisplay: null,
         epicUrl: null,

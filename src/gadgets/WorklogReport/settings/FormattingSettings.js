@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { renderRadioButton } from './actions';
 import { ShowMoreLink } from './Common';
+import { Checkbox } from '../../../controls';
 
 function FormattingSettings({ setValue, state, state: { logFormat, timeZone, daysToHide } }) {
     const [showMore, setShowMore] = useState(false);
@@ -77,7 +78,7 @@ function FormattingSettings({ setValue, state, state: { logFormat, timeZone, day
 
 export default FormattingSettings;
 
-function MoreFormattingSettings({ setValue, state: { breakupMode, userDisplayFormat, rIndicator } }) {
+function MoreFormattingSettings({ setValue, state: { breakupMode, userDisplayFormat, rIndicator, expandUsers, splitWorklogDays } }) {
     return (<>
         <div className="form-group row">
             <label className="col-md-3 col-form-label">User display format</label>
@@ -134,6 +135,20 @@ function MoreFormattingSettings({ setValue, state: { breakupMode, userDisplayFor
                         Do not show any indicator
                     </label>
                 </div>
+            </div>
+        </div>
+        <div className="form-group row">
+            <div className="col-12">
+                <Checkbox checked={expandUsers}
+                    onChange={val => setValue('expandUsers', val)}
+                    label="Expand user row by default in grouped report" />
+            </div>
+            <div className="col-12">
+                <Checkbox checked={splitWorklogDays}
+                    onChange={val => setValue('splitWorklogDays', val)}
+                    label="Do not group worklog on ticket for multiple days under issue day wise tab" />
+                <span className="pad-l-15"> ( <i className="fa fa-exclamation-triangle"
+                    title="Change will take effect only after report is refreshed" /> )</span>
             </div>
         </div>
     </>);

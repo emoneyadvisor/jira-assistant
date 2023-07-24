@@ -1,15 +1,16 @@
 import moment from 'moment';
 import { inject } from "../../services/injector-service";
-import { getSettingsObj } from "./datastore";
+import { getSettingsObj, getSprintsList } from "./datastore";
 import { generateRangeReport } from "./range-report";
 import { generateSprintReport } from "./sprint-report";
+import { getComponentFor } from '../../display-controls';
 
 export function setStateValue(setState) {
     return function (value) { setState(value); };
 }
 
 export function getSettingsToStore(_, getState) {
-    return function () { return getSettingsObj(getState()); };
+    return function (opts) { return getSettingsObj(getState(), opts); };
 }
 
 export function fillSprintList(setState, getState) {
@@ -55,24 +56,6 @@ export function hideWorklog(setState) {
     };
 }
 
-export function getSprintsList({ sprintBoards, sprintList }) {
-    if (!sprintBoards || !sprintList) {
-        return { sprints: [], allSprints: {} };
-    }
-
-    const sprints = sprintBoards.map(b => ({
-        label: b.name,
-        isGroup: true,
-        items: sprintList[b.id]?.map(({ name, id }) => ({ value: id, label: name }))
-    }));
-    const allSprints = Object.keys(sprintList).reduce((obj, grp) => {
-        sprintList[grp]?.forEach(spr => obj[spr.id] = spr);
-        return obj;
-    }, {});
-
-    return { sprints, allSprints };
-}
-
 export function fetchData(setState, getState) {
     return async function () {
         const { timeframeType } = getState();
@@ -100,16 +83,40 @@ export function convertSecs(_, getState) {
 export function flatGridSettingsChanged(setState) {
     return function (flatTableSettings) { setState({ flatTableSettings }); };
 }
-
+const nativeTypes = ['date', 'datetime', 'string', 'number'];
+const ignoredTypes = ['project', 'issuetype', 'parent', 'status', 'assignee', 'reporter', 'comment'];
 export function getColumnSettings(_, getState) {
     const formatSecs = convertSecs(_, getState);
-    const { $userutils: { formatDateTime } } = inject('UserUtilsService');
+    const { $userutils: { formatDateTime, formatDate } } = inject('UserUtilsService');
+    const typeBasedProps = {
+        datetime: { format: (val) => formatDateTime(val) },
+        date: { format: (val) => formatDate(val) }
+    };
 
     return function (formatTicket) {
-        const { userListMode, timeframeType } = getState();
+        const { userListMode, timeframeType, fields: { optional = [] } = {} } = getState();
         const includeGroup = userListMode === '2';
         const includeSprint = timeframeType === '1';
         const timeFormat = getState('logFormat') === '1' ? 'string' : 'number';
+
+        const addlCols = optional
+            .map(f => {
+                if (ignoredTypes.includes(f.key) || f.type === 'timespent') {
+                    return null;
+                }
+
+                const field = { field: `fields.${f.key}`, displayText: f.name, type: f.type, ...typeBasedProps[f.type] };
+
+                if (nativeTypes.includes(f.type)) {
+                    return field;
+                }
+
+                const { Component, props } = getComponentFor(f.type);
+                field.viewComponent = Component;
+                field.props = props;
+
+                return field;
+            });
 
         //displayFormat: null, sortValueFun: null, groupValueFunc: null
         //, allowSorting: true, allowGrouping: true
@@ -135,6 +142,8 @@ export function getColumnSettings(_, getState) {
             { field: "remainingestimate", displayText: "Rem. Estm.", type: timeFormat, format: formatSecs },
             { field: "estVariance", displayText: "Estm. Variance", type: 'string', format: (value) => (value > 0 ? "+" : "") + formatSecs(value) },
             { field: "comment", displayText: "Comment" },
+            { field: "fields.project.key", displayText: "Project Name test", type: "string" },
+            ...addlCols
         ].filter(Boolean);
     };
 }

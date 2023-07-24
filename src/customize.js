@@ -12,7 +12,7 @@ const config = {
 
         // Reports
         worklogReport: true,
-        worklogReportOld: true,
+        worklogReportOld: false,
         sprintReport: false,
         customReport: false,
         estimateVsActual: false,

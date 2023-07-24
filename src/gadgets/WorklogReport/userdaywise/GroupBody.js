@@ -5,12 +5,14 @@ import { convertSecs } from '../actions';
 import GroupRow from './GroupRow';
 
 function GroupBody({ boardId, isSprint,
-    groupedData, addlColCount, sprintsList,
+    groupedData, additionalCols, sprintsList,
     logFormat, costView, rIndicator
 }) {
+    const addlColCount = (additionalCols?.length || 0) + 1;
+
     const timeExportFormat = logFormat === "2" ? "float" : undefined;
     const groupRows = groupedData.map((grp, i) => <GroupRow key={i} index={i} boardId={boardId}
-        colSpan={addlColCount} group={grp} timeExportFormat={timeExportFormat} costView={costView} />);
+        additionalCols={additionalCols} group={grp} timeExportFormat={timeExportFormat} costView={costView} />);
 
     return (<TBody className={rIndicator !== '2' ? 'no-log-bg-hl' : ''}>
         {groupRows}
@@ -30,14 +32,14 @@ export default connect(GroupBody,
             const {
                 [`userGroup_${boardId}`]: groupedData,
                 [`sprintsList_${boardId}`]: sprintsList,
-                logFormat, costView, rIndicator
+                logFormat, rIndicator
             } = state;
 
-            return ({ isSprint, sprintsList, groupedData, logFormat, costView, rIndicator });
+            return ({ isSprint, sprintsList, groupedData, logFormat, rIndicator });
         } else {
-            const { groupReport: { groupedData }, logFormat, costView, rIndicator } = state;
+            const { groupReport: { groupedData }, logFormat, rIndicator } = state;
 
-            return ({ groupedData, logFormat, costView, rIndicator });
+            return ({ groupedData, logFormat, rIndicator });
         }
     });
 

@@ -1,14 +1,15 @@
 import React from 'react';
-import config from '../../customize';
-import BaseGadget from '../BaseGadget';
-import { inject } from '../../services/injector-service';
-import { GadgetActionType } from '../_constants';
+import * as moment from 'moment';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listWeekPlugin from '@fullcalendar/list';
+import momentPlugin from '@fullcalendar/moment';
 import interactionPlugin from '@fullcalendar/interaction';
-import * as moment from 'moment';
+import config from '../../customize';
+import BaseGadget from '../BaseGadget';
+import { inject } from '../../services/injector-service';
+import { GadgetActionType } from '../_constants';
 import Button from '../../controls/Button';
 import SelectBox from '../../controls/SelectBox';
 import { hideContextMenu, showContextMenu } from '../../externals/jsd-report';
@@ -16,10 +17,10 @@ import AddWorklog from '../../dialogs/AddWorklog';
 import { OverlayPanel } from 'primereact/overlaypanel';
 import MeetingDetails from './MeetingDetails';
 import CalendarSettings from './Settings';
-import { DefaultEndOfDay, DefaultStartOfDay, DefaultWorkingDays, EventCategory } from '../../constants/settings';
-import './Calendar.scss';
+import { DefaultEndOfDay, DefaultStartOfDay, DefaultWorkingDays, EventCategory, momentizedDateFormats } from '../../constants/settings';
 import { WorklogContext } from '../../common/context';
 import ChangeTracker from '../../components/ChangeTracker';
+import './Calendar.scss';
 
 const viewModes = [
     { value: 'dayGridMonth', label: 'Month' }, { value: 'timeGridWeek', label: 'Week' }, { value: 'timeGridDay', label: 'Day' },
@@ -27,7 +28,7 @@ const viewModes = [
     { value: 'dayGridWeek', label: 'Grid Week' }, { value: 'dayGridDay', label: 'Grid Day' }
 ];
 
-const availablePlugins = [dayGridPlugin, timeGridPlugin, interactionPlugin, listWeekPlugin];
+const availablePlugins = [dayGridPlugin, timeGridPlugin, interactionPlugin, listWeekPlugin, momentPlugin];
 
 const { googleCalendar, outlookCalendar } = config.features.integrations;
 const showMeetings = outlookCalendar !== false || googleCalendar !== false;
@@ -63,6 +64,7 @@ class Calendar extends BaseGadget {
         //this.defaultView = this.state.settings.viewMode || "month";
         this.maxTime = this.CurrentUser.maxHours;
         this.minTime = this.CurrentUser.minHours || this.maxTime;
+        this.dateFormat = this.CurrentUser.dateFormat;
         if (this.maxTime) {
             this.maxTime = this.maxTime * 60 * 60;
         }
@@ -138,13 +140,30 @@ class Calendar extends BaseGadget {
         ];
     }
 
-    getCalendarOptions({ fullView }) {
+    getDayHeaderFormat(viewMode) {
+        if (viewMode === 'dayGridMonth') {
+            return undefined;
+        }
+
+        let dayHeaderFormat = this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined;
+        if (dayHeaderFormat) {
+            dayHeaderFormat = dayHeaderFormat.replace('YYYY', '').replace(/-/g, '/').clearStart(['/', ',', ' ']).clearEnd(['/', ',', ' ']);
+            if (!dayHeaderFormat.includes('ddd')) {
+                dayHeaderFormat = `ddd, ${dayHeaderFormat}`;
+            }
+        }
+
+        return dayHeaderFormat;
+    }
+
+    getCalendarOptions({ fullView, zoomIn }) {
         const {
             startOfDay, endOfDay,
             startOfWeek, workingDays,
             timeFormat
         } = this.CurrentUser;
         const { viewMode } = (this.isGadget ? this.props : this.state.settings);
+        const { hideWeekends, readableEvents } = this.state.settings;
         const { startOfDayDisp, endOfDayDisp } = fullView ? { startOfDayDisp: '00:00', endOfDayDisp: '23:59' } : this.CurrentUser;
 
         let firstDay = startOfWeek;
@@ -158,12 +177,24 @@ class Calendar extends BaseGadget {
         const hour12 = (timeFormat || "").indexOf("tt") > -1;
         const meridiem = hour12 ? "short" : false;
 
+
+        const allWeekDays = [0, 1, 2, 3, 4, 5, 6];
+        let hiddenDays = hideWeekends ? allWeekDays.filter(v => !workingDays.includes(v)) : [];
+        if (hiddenDays?.length === 7) {
+            hiddenDays = [];
+        }
+
         return {
             plugins: availablePlugins,
             timeZone: 'local',
             // selectHelper: true, //ToDo: need to check what is this // ToDo: Prop changed
 
             weekends: true,
+            hiddenDays,
+
+            titleFormat: this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined,
+            dayHeaderFormat: this.getDayHeaderFormat(viewMode),
+            eventMinHeight: readableEvents ? 40 : undefined,
 
             // Event Display
             displayEventTime: true,
@@ -188,7 +219,7 @@ class Calendar extends BaseGadget {
             droppable: true,
 
             // Time-Axis Settings
-            slotDuration: "00:15:00",
+            slotDuration: zoomIn ? '00:05:00' : '00:15:00',
             slotMinTime: startOfDayDisp || startOfDay || DefaultStartOfDay, //"08:00:00",
             slotMaxTime: endOfDayDisp || endOfDay || DefaultEndOfDay, //"22:00:00",
 
@@ -242,6 +273,7 @@ class Calendar extends BaseGadget {
 
     viewModeChanged = (viewMode) => {
         this.setState({ viewMode });
+        this.fullCalendarOpts.dayHeaderFormat = this.getDayHeaderFormat(viewMode);
         this.calendar.getApi().changeView(viewMode);
         this.saveSettings({ ...this.state.settings, viewMode }, true);
     };
@@ -309,7 +341,7 @@ class Calendar extends BaseGadget {
             this.setEventsData(data);
         };
 
-        const req = [this.$worklog.getWorklogsEntry(start, end)];
+        const req = [this.$worklog.getWorklogsEntry(start, end, ['worklog', 'summary'])];
 
         if (this.CurrentUser.googleIntegration && this.CurrentUser.hasGoogleCredentials && this.state.settings.showMeetings) {
             req.push(this.$calendar.getEvents(start, end).then(null, (err) => {
@@ -344,7 +376,8 @@ class Calendar extends BaseGadget {
                 .groupBy((key) => moment(key.start).format("YYYY-MM-DD"))
                 .map((d) => this.getAllDayObj(d));
 
-            this.latestData = data;
+            // Commented on 28-Mar-2023
+            //this.latestData = data;
 
             filter(data.addRange(allDayEvents).addRange(arr[1]));
         }, (err) => { this.setState({ isLoading: false }); return Promise.reject(err); });
@@ -396,9 +429,11 @@ class Calendar extends BaseGadget {
         });
     }
 
-    updateAllDayEvent(result) {
+    updateAllDayEvent(result, events) {
         const key = moment(result.start).format("YYYY-MM-DD");
-        const { events } = this.state;
+        if (!events) {
+            events = [...this.state.events];
+        }
         events.removeAll((e) => e.id === key && e.entryType === 3);
         const logs = events.filter((a) => a.entryType === 1 && moment(a.start).format("YYYY-MM-DD") === key);
         if (logs && logs.length > 0) {
@@ -457,29 +492,33 @@ class Calendar extends BaseGadget {
             return;
         } // This will be triggered when closing the popup
         let resp = false;
-        const { events } = this.state;
+        let { events } = this.state;
+        events = [...events];
 
         if (result.removed) {
             const removedId = result.removed + (result.deletedObj.worklogId ? `#${result.deletedObj.worklogId}` : "");
             result = events.first((e) => e.id === removedId && e.entryType === 1);
             events.remove(result);
-            this.latestData.remove((e) => e.id === result.id && e.entryType === 1);
+            // Commented on 28-Mar-2023
+            //this.latestData.remove((e) => e.id === result.id && e.entryType === 1);
         }
         else if (result.added || result.edited) {
             const previousTime = result.previousTime;
             result = result.added || result.edited;
+            result = { ...result };
             result.backgroundColor = this.state.settings.worklogColor; // Set color for newely added worklog
             result.borderColor = result.backgroundColor;
             events.removeAll((e) => e.id === result.id && e.entryType === 1);
             events.push(result);
-            this.latestData.removeAll((e) => e.id === result.id && e.entryType === 1);
-            this.latestData.push(result);
+            // Commented on 28-Mar-2023
+            //this.latestData.removeAll((e) => e.id === result.id && e.entryType === 1);
+            //this.latestData.push(result);
             resp = true;
             if (previousTime) {
-                this.updateAllDayEvent({ start: previousTime });
+                this.updateAllDayEvent({ start: previousTime }, events);
             }
         }
-        this.updateAllDayEvent(result);
+        this.updateAllDayEvent(result, events);
 
         //events.removeAll((e) => e.entryType === 3);
         this.setEventsData(events);
@@ -709,7 +748,7 @@ class Calendar extends BaseGadget {
         const { view } = event;
         this.startDate = view.activeStart;
         this.endDate = view.activeEnd;
-        this.title = `Calendar - [${view.title.replace(/[^a-zA-Z0-9, ]+/g, '-')}]`;
+        this.title = `Calendar - [${view.title.replace(/[^a-zA-Z0-9, /]+/g, '-')}]`;
         this.saveSettings({ ...this.state.settings, viewMode: view.type });
     }
 
@@ -745,7 +784,7 @@ class Calendar extends BaseGadget {
         }
         else {
             const oldDate = eventSrcObj.dateStarted;
-            const newTime = snapTimeToGrid(snapMinutes, event.start);
+            const newTime = snapTimeToGrid(this.state.zoomIn ? 5 : snapMinutes, event.start);
             this.$worklog.changeWorklogDate(eventSrcObj, newTime).then((entry) => {
                 this.$analytics.trackEvent("Worklog moved", EventCategory.UserActions, eventSrcObj.isUploaded ? "Uploaded worklog" : "Pending worklog");
                 //this.updateAllDayEvent({ start: oldDate }); // This is to update the info of previous date
@@ -771,7 +810,7 @@ class Calendar extends BaseGadget {
 
     getEventDuration(event, snap) {
         if (event.end && event.start) {
-            const newTime = snap ? snapTimeToGrid(snapMinutes, event.end) : event.end;
+            const newTime = snap ? snapTimeToGrid(this.state.zoomIn ? 5 : snapMinutes, event.end) : event.end;
             const diff = moment.duration(moment(newTime).diff(event.start));
             return `${diff.hours().pad(2)}:${diff.minutes().pad(2)}`;
         }
@@ -793,9 +832,21 @@ class Calendar extends BaseGadget {
 
         const hourDiff = ` (${this.$utils.formatTs(this.getEventDuration(event))})`;
         const srcObj = event.extendedProps.sourceObject;
-        let title;
+        let evTitle = event.title;
+        let subTitle = '', title;
+
+        if (entryType === 1) {
+            const { detailsMode } = this.state.settings;
+
+            if (detailsMode === '2') {
+                evTitle = `${srcObj?.ticketNo} - ${srcObj?.summary}`;
+            } else if (detailsMode === '3') {
+                subTitle = srcObj?.summary;
+            }
+        }
+
         if (srcObj) {
-            title = `${timeText} ${hourDiff}\n${event.title}`;
+            title = `${timeText} ${hourDiff}\n${evTitle}`;
         }
 
         let leftIcon;
@@ -815,7 +866,7 @@ class Calendar extends BaseGadget {
         }
         else if (entryType === 2) {
             const m = srcObj;
-            const hasWorklog = this.latestData.some((e) => e.parentId === event.id && e.entryType === 1);
+            const hasWorklog = this.state.events?.some((e) => e.parentId === event.id && e.entryType === 1);
 
             contextEvent = (e, a, d) => {
                 //hideContextMenu();
@@ -840,6 +891,9 @@ class Calendar extends BaseGadget {
         }
 
         if (type === 'timeGridWeek' || type === 'timeGridDay') {
+            const lines = (evTitle ? 3 : 0) + (subTitle ? 3 : 0);
+            const clsName = (lines * 30 > srcObj.totalMins ? ' short-desc' : '');
+
             return (<div ref={(e) => e?.parentElement?.parentElement?.addEventListener('contextmenu', contextEvent)}
                 className="fc-content pad-8" title={title} data-jira-key={srcObj?.ticketNo} data-jira-wl-id={srcObj?.worklogId}>
                 {entryType === 1 && <WorklogOptions worklog={srcObj} onUpload={this.uploadSelectedWorklog} onClone={this.cloneWorklog} />}
@@ -848,9 +902,12 @@ class Calendar extends BaseGadget {
                     <span>{timeText}</span>
                     <span className="fc-hour"> {hourDiff}</span>
                 </div>
-                <div className="fc-title">{event.title}</div>
+                <div className={`fc-title${clsName}`}>{evTitle}</div>
+                {!!subTitle && <div className={`fc-sub-title${clsName}`} title={subTitle}>{subTitle}</div>}
             </div>);
         }
+
+        return true;
     };
 
     async uploadWorklog(all) {
@@ -957,25 +1014,32 @@ class Calendar extends BaseGadget {
         this.$config.saveSettings('calendar', settings);
     };
 
-    toggleDisplayHours = () => this.setState(({ fullView }) => {
-        const newState = { fullView: !fullView };
-        this.fullCalendarOpts = this.getCalendarOptions(newState);
+    toggleDisplayHours = () => this.setState(state => this.updateOpts(state, { fullView: !state.fullView }));
+    toggleZoom = () => this.setState(state => this.updateOpts(state, { zoomIn: !state.zoomIn }));
+
+    updateOpts(state, newState) {
+        this.fullCalendarOpts = this.getCalendarOptions({ ...state, ...newState });
         return newState;
-    });
+    }
+
+    today = () => this.calendar.getApi().today();
 
     renderCustomActions() {
         const {
             isGadget,
-            state: { pendingWorklogCount, isLoading, uploading, fullView, settings: { viewMode } }
+            state: { pendingWorklogCount, isLoading, uploading, fullView, zoomIn, settings: { viewMode } }
         } = this;
         const isGridMode = viewMode === 'timeGridWeek' || viewMode === 'timeGridDay';
         return <>
             {isGridMode && <Button type="secondary" icon={fullView ? 'fa fa-compress' : 'fa fa-expand'} onClick={this.toggleDisplayHours}
                 title={fullView ? "Click to show only working hours in calendar" : "Click to show full day calendar"} />}
+            <Button label="Today" onClick={this.today} title="Navigate to current week" />
+            <Button onClick={this.toggleZoom} icon={zoomIn ? "fa fa-search-minus" : "fa fa-search-plus"}
+                title={zoomIn ? "Zoom out to see 15 mins grid" : "Zoom in to see 5 mins grid"} />
             {!this.isGadget && <>
                 <Button icon="fa fa-arrow-left" onClick={() => this.calendar.getApi().prev()} />
                 <Button icon="fa fa-arrow-right" onClick={() => this.calendar.getApi().next()} />
-                <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" placeholder="Select a view mode" onChange={this.viewModeChanged} />
+                <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" style={{ width: '120px' }} onChange={this.viewModeChanged} />
             </>}
             <span className="info-badge" title={pendingWorklogCount ? `Upload ${pendingWorklogCount} pending worklog(s)` : 'No worklog pending to be uploaded'}>
                 {pendingWorklogCount > 0 && <span className="info btn-warning">{pendingWorklogCount}</span>}

@@ -52,8 +52,7 @@ class PendingWorklog extends BaseGadget {
                     w.rowClass = this.$utils.getRowStatus(w);
                     w.displayDate = this.$userutils.formatDateTime(w.dateStarted);
                     w.selected = selAllChk;
-                    w.timeSpent = this.$utils.formatTs(w.timeSpent);
-                    w.overrideTimeSpent = this.$utils.formatTs(w.overrideTimeSpent);
+                    w.timeSpent = this.$utils.formatTs(w.overrideTimeSpent || w.timeSpent);
                 });
 
                 this.setState({ isLoading: false, worklogs });
@@ -152,9 +151,9 @@ class PendingWorklog extends BaseGadget {
                         <Column className="w40" noExport={true}><Checkbox checked={selAllChk} onChange={this.selectAll} /></Column>
                         <Column sortBy="ticketNo">Ticket No</Column>
                         <Column sortBy="summary">Summary</Column>
+                        <Column sortBy="summary">Assignee</Column>
                         <Column sortBy="dateStarted">Log Time</Column>
                         <Column sortBy="timeSpent">Time Spent</Column>
-                        <Column sortBy="overrideTimeSpent">Override Time</Column>
                         <Column>Description</Column>
                     </tr>
                 </THead>
@@ -166,9 +165,9 @@ class PendingWorklog extends BaseGadget {
                         </td>
                         <td><Link href={b.ticketUrl} className="link strike" >{b.ticketNo}</Link></td>
                         <td>{b.summary}</td>
+                        <td>{b.assignee}</td>
                         <td>{b.displayDate}</td>
                         <td>{b.timeSpent}</td>
-                        <td>{b.overrideTimeSpent}</td>
                         <td>{b.description}</td>
                     </tr>}
                 </TBody>

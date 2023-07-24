@@ -1,13 +1,13 @@
 import moment from "moment";
 import { inject } from "../../services/injector-service";
 import { filterDaysWithoutWorklog, generateUserDayWiseData, getEpicDetails, getUserWiseWorklog, getWeekHeader } from "./userdaywise/utils_group";
-import { generateFlatWorklogData, getFieldsToFetch, getProjectKeys, getUniqueUsersFromGroup } from "./utils";
+import { generateFlatWorklogData, generateIssueDayWiseData, getFieldsToFetch, getProjectKeys, getUniqueUsersFromGroup } from "./utils";
 
 export function generateRangeReport(setState, getState) {
     return async function () {
         const newState = { loadingData: false };
         try {
-            setState({ loadingData: true });
+            setState({ loadingData: true, errorTitle: '', errorMessage: '' });
 
             const { dateRange: { fromDate, toDate } } = getState();
             if (!fromDate || !toDate) {
@@ -23,17 +23,20 @@ export function generateRangeReport(setState, getState) {
                 return;
             }
 
-            const { groupReport, flatWorklogs } = result;
+            const { groupReport, flatWorklogs, issueDayWise } = result;
             newState.groupReport = groupReport;
             newState.flatWorklogs = flatWorklogs;
+            newState.issueDayWise = issueDayWise;
 
             newState.reportLoaded = true;
         } catch (err) {
-            console.error('Error pulling range report', err);
+            console.error('Error pulling range report:', err);
             const { $message } = inject('MessageService');
 
-            const msg = err.message || err.error?.errorMessages?.[0] || 'Unknown error. Check the console for more details';
-            $message.error(msg, 'Unknown error');
+            const errorMessage = err.message || err.error?.errorMessages?.[0] || 'Unknown error. Check the console for more details';
+            const errorTitle = err.message ? 'Worklog report' : 'Unknown error';
+            setState({ errorTitle, errorMessage });
+            $message.error(errorMessage, errorTitle);
         } finally {
             setState(newState);
         }
@@ -49,6 +52,9 @@ async function generateWorklogReportForDateRange(fromDate, toDate, state) {
 
     const epicDetails = await getEpicDetails(issues, epicNameField?.id);
 
+    const input = prepareInputForGeneration(issues, fromDate, toDate, name?.toLowerCase(), state, epicDetails);
+    const issueDayWise = getIssueDayWiseData(input, state);
+
     const { userListMode, userGroups: savedGroups, reportUserGrp } = state;
     const useGroups = userListMode === '2' && reportUserGrp === '1';
     if (!useGroups && reportUserGrp !== '1') {
@@ -59,10 +65,11 @@ async function generateWorklogReportForDateRange(fromDate, toDate, state) {
             .map(({ values }) => ({ issues: values, grpName: getGroupName(values) })) // Create object with group names
             .sortBy(({ grpName }) => grpName) // Sort with group names
             .reduce((obj, { grpName, issues }) => {
+                const groupedInput = prepareInputForGeneration(issues, fromDate, toDate, name?.toLowerCase(), state, epicDetails, obj.dates);
                 const {
                     flatWorklogs: flatData,
                     groupReport: { dates, groupedData: g }
-                } = formGroupedWorklogs(issues, fromDate, toDate, name?.toLowerCase(), state, useGroups && savedGroups, epicDetails, obj.dates, grpName);
+                } = formGroupedWorklogs(groupedInput, state, useGroups && savedGroups, grpName);
 
                 obj.dates = dates;
 
@@ -73,14 +80,14 @@ async function generateWorklogReportForDateRange(fromDate, toDate, state) {
 
                 flatWorklogs.addRange(flatData);
 
-                // Add the item in the grouplist to our array of groups
+                // Add the item in the group list to our array of groups
                 const [grp] = g;
                 grp.name = grpName;
                 delete grp.isDummy;
                 const { groupedData } = obj;
                 groupedData.push(grp);
 
-                // Sumup other extended properties in array
+                // Sum up other extended properties in array
                 groupedData.grandTotal = (groupedData.grandTotal || 0) + (g.grandTotal || 0);
                 groupedData.grandTotalCost = (groupedData.grandTotalCost || 0) + (g.grandTotalCost || 0);
                 groupedData.total = sumAndMergeObjectProps(groupedData.total, g.total);
@@ -89,13 +96,16 @@ async function generateWorklogReportForDateRange(fromDate, toDate, state) {
                 return obj;
             }, { groupedData: [] });
 
-        // As multiple groups are executed seperately, filtering logic is added here
+        // As multiple groups are executed separately, filtering logic is added here
         groupReport.dates = filterDaysWithoutWorklog(state.daysToHide, groupReport.dates);
         groupReport.weeks = getWeekHeader(groupReport.dates);
 
-        return { flatWorklogs, groupReport };
+        return { flatWorklogs, groupReport, issueDayWise };
     } else {
-        return formGroupedWorklogs(issues, fromDate, toDate, name?.toLowerCase(), state, useGroups && savedGroups, epicDetails);
+        const result = formGroupedWorklogs(input, state, useGroups && savedGroups);
+        result.issueDayWise = issueDayWise;
+
+        return result;
     }
 }
 
@@ -144,11 +154,21 @@ function sumAndMergeObjectProps(obj1, obj2) {
     }
 }
 
-function formGroupedWorklogs(issues, fromDate, toDate, name, state, userGroups, epicDetails, dates, grpName) {
-    const { userwiseLog, userwiseLogArr } = getUserWiseWorklog(issues, fromDate, toDate, name, state, epicDetails);
+function formGroupedWorklogs(input, state, userGroups, grpName) {
+    const { userwiseLog, userwiseLogArr, settings } = input;
+
     if (!userGroups) {
         userGroups = [createGroupObjectWithUsers(userwiseLogArr, grpName)];
     }
+
+    const groupReport = generateUserDayWiseData(userwiseLog, userGroups, settings, state);
+    const flatWorklogs = generateFlatWorklogData(userwiseLog, userGroups);
+
+    return { groupReport, flatWorklogs };
+}
+
+function prepareInputForGeneration(issues, fromDate, toDate, name, state, epicDetails, dates) {
+    const { userwiseLog, userwiseLogArr } = getUserWiseWorklog(issues, fromDate, toDate, name, state, epicDetails);
 
     const settings = {
         fromDate: fromDate.toDate(),
@@ -158,10 +178,17 @@ function formGroupedWorklogs(issues, fromDate, toDate, name, state, userGroups, 
         daysToHide: !dates ? state.daysToHide : null
     };
 
-    const groupReport = generateUserDayWiseData(userwiseLog, userGroups, settings, state);
-    const flatWorklogs = generateFlatWorklogData(userwiseLog, userGroups);
+    return { userwiseLog, userwiseLogArr, settings };
+}
 
-    return { groupReport, flatWorklogs };
+function getIssueDayWiseData(input, state) {
+    const { userwiseLog, userwiseLogArr, settings } = input;
+
+    const userGroups = [createGroupObjectWithUsers(userwiseLogArr)];
+    const groupReport = generateUserDayWiseData(userwiseLog, userGroups, settings, state);
+    const issueDayWise = generateIssueDayWiseData(groupReport, state);
+
+    return issueDayWise;
 }
 
 // Set as empty as it would look odd in chart headers
@@ -190,8 +217,7 @@ async function getIssuesWithWorklogFor(fromDate, toDate, state, epicNameField) {
     // When we receive empty array, it means user has configured to use these values
     // So when items are missing, do not pull any issues
     if (userList?.length === 0 || projectKeys?.length === 0) {
-        console.error('Not pulling worklogs as either user or project is not selected');
-        return [];
+        throw Error('Either userlist or project is required for generating worklog report');
     }
 
     const authorJQL = userList ? `worklogAuthor in ("${userList.join('","')}")` : '';
