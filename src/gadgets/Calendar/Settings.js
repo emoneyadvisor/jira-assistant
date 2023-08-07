@@ -34,8 +34,8 @@ class CalendarSettings extends BaseDialog {
 
     getFooter() {
         return <>
-            <Button type="default" icon="fa fa-times" label="Cancel" onClick={this.onHide} />
-            <Button type="success" icon="fa fa-floppy-o" label="Done" onClick={this.onDone} />
+            <Button text type="secondary" icon="fa fa-times" label="Cancel" onClick={this.onHide} />
+            <Button type="primary" icon="fa fa-save" label="Done" onClick={this.onDone} />
         </>;
     }
 
@@ -110,6 +110,10 @@ class CalendarSettings extends BaseDialog {
             <div className="form-group">
                 <Checkbox checked={settings.hideWeekends || false} onChange={(val) => this.setValue(val, "hideWeekends")} label="Hide weekends from calendar view (even when worklog already exists)" />
                 &nbsp;( <span className="fa fa-exclamation-triangle" title="Will be applied only once the page is refreshed. Existing pending worklog would still be uploaded even if hidden" /> )
+            </div>
+            <div className="form-group">
+                <Checkbox checked={settings.readableEvents || false} onChange={(val) => this.setValue(val, "readableEvents")} label="Allow small events to expand in height to make it readable" />
+                &nbsp;( <span className="fa fa-exclamation-triangle" title="This settings may result in small events overlapping with other events. This settings would be applied only after page refresh." /> )
             </div>
         </div>);
     }

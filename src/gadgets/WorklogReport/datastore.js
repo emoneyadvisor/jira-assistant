@@ -15,6 +15,8 @@ const initialData = {
     daysToHide: '1', // 1=show all days, 2=hide non working days,3=hide days without worklog
     rIndicator: '1', // 1=thermometer, 2=bg highlight,0=none
     timeZone: '1',
+    expandUsers: false,
+    splitWorklogDays: false,
 
     sprintStartRounding: '1',
     sprintEndRounding: '1',
@@ -37,7 +39,8 @@ const initialData = {
     sprintList: {},
     allSprints: {},
 
-    sprints: []
+    sprints: [],
+    userExpnState: {} // This would contain [uid]: true when user is expanded in group
     //sprintsList_{boardId}:[{sprint}]
     //groupReport_{boardId}:{weeks:[],dates:[], groupedData:[{group}]}
 };
@@ -83,6 +86,8 @@ export function getSettingsObj(data, opts) {
         fields,
         daysToHide,
         rIndicator,
+        expandUsers,
+        splitWorklogDays,
         jql,
         logFilterType,
         filterThrsType,
@@ -112,6 +117,8 @@ export function getSettingsObj(data, opts) {
         fields,
         daysToHide,
         rIndicator,
+        expandUsers,
+        splitWorklogDays,
         jql,
         logFilterType,
         filterThrsType,

@@ -10,7 +10,7 @@ import config from '../../customize';
 import BaseGadget from '../BaseGadget';
 import { inject } from '../../services/injector-service';
 import { GadgetActionType } from '../_constants';
-import Button from '../../controls/Button';
+import { Button } from '../../controls';
 import SelectBox from '../../controls/SelectBox';
 import { hideContextMenu, showContextMenu } from '../../externals/jsd-report';
 import AddWorklog from '../../dialogs/AddWorklog';
@@ -34,7 +34,7 @@ const { googleCalendar, outlookCalendar } = config.features.integrations;
 const showMeetings = outlookCalendar !== false || googleCalendar !== false;
 
 const meetingInfo = showMeetings && (<>
-    <li>One click <span className="fa fa-clock-o" /> icon to create worklog entry for meetings</li>
+    <li>One click <span className="fa fa-clock" /> icon to create worklog entry for meetings</li>
     <li>You can set "Default meeting ticket" in General Settings &#8680; Worklog tab</li>
 </>);
 
@@ -128,10 +128,10 @@ class Calendar extends BaseGadget {
             wlTickets.push({ separator: true });
         }
         wlTickets.push({
-            label: 'Choose ticket', icon: "fa fa-pencil-square-o",
+            label: 'Choose ticket', icon: "fa fa-pencil",
             command: (e) => this.createWorklog(e.originalEvent, this.currentMeetingItem, "")
         });
-        this.mnuCal_AddWL = { label: "Add worklog to", icon: "fa fa-clock-o", items: wlTickets, command: (e) => this.createWorklog(e.originalEvent, this.currentMeetingItem, "") };
+        this.mnuCal_AddWL = { label: "Add worklog to", icon: "fa fa-clock", items: wlTickets, command: (e) => this.createWorklog(e.originalEvent, this.currentMeetingItem, "") };
         this.mnuCal_OpenUrl = { label: "Open video call", icon: "fa fa-video-camera", command: () => this.openVideoCall(this.currentMeetingItem) };
         this.calMenuItems = [
             this.mnuCal_AddWL,
@@ -140,14 +140,30 @@ class Calendar extends BaseGadget {
         ];
     }
 
-    getCalendarOptions({ fullView }) {
+    getDayHeaderFormat(viewMode) {
+        if (viewMode === 'dayGridMonth') {
+            return undefined;
+        }
+
+        let dayHeaderFormat = this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined;
+        if (dayHeaderFormat) {
+            dayHeaderFormat = dayHeaderFormat.replace('YYYY', '').replace(/-/g, '/').clearStart(['/', ',', ' ']).clearEnd(['/', ',', ' ']);
+            if (!dayHeaderFormat.includes('ddd')) {
+                dayHeaderFormat = `ddd, ${dayHeaderFormat}`;
+            }
+        }
+
+        return dayHeaderFormat;
+    }
+
+    getCalendarOptions({ fullView, zoomIn }) {
         const {
             startOfDay, endOfDay,
-            startOfWeek, workingDays,
+            startOfWeek, workingDays = DefaultWorkingDays,
             timeFormat
         } = this.CurrentUser;
         const { viewMode } = (this.isGadget ? this.props : this.state.settings);
-        const { hideWeekends } = this.state.settings;
+        const { hideWeekends, readableEvents } = this.state.settings;
         const { startOfDayDisp, endOfDayDisp } = fullView ? { startOfDayDisp: '00:00', endOfDayDisp: '23:59' } : this.CurrentUser;
 
         let firstDay = startOfWeek;
@@ -160,15 +176,6 @@ class Calendar extends BaseGadget {
 
         const hour12 = (timeFormat || "").indexOf("tt") > -1;
         const meridiem = hour12 ? "short" : false;
-
-        /* Temporarily disabled date formatting in header as it shows wrong date
-        let dayHeaderFormat = this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined;
-        if (dayHeaderFormat) {
-            dayHeaderFormat = dayHeaderFormat.replace('YYYY', '').replace(/-/g, '/').clearStart(['/', ',', ' ']).clearEnd(['/', ',', ' ']);
-            if (!dayHeaderFormat.includes('ddd')) {
-                dayHeaderFormat = `ddd, ${dayHeaderFormat}`;
-            }
-        }*/
 
         const allWeekDays = [0, 1, 2, 3, 4, 5, 6];
         let hiddenDays = hideWeekends ? allWeekDays.filter(v => !workingDays.includes(v)) : [];
@@ -185,8 +192,8 @@ class Calendar extends BaseGadget {
             hiddenDays,
 
             titleFormat: this.dateFormat ? momentizedDateFormats[this.dateFormat] : undefined,
-            //dayHeaderFormat, //Temporarily disabled date formatting in header as it shows wrong date
-            //eventMinHeight: 25,
+            dayHeaderFormat: this.getDayHeaderFormat(viewMode),
+            eventMinHeight: readableEvents ? 40 : undefined,
 
             // Event Display
             displayEventTime: true,
@@ -211,7 +218,7 @@ class Calendar extends BaseGadget {
             droppable: true,
 
             // Time-Axis Settings
-            slotDuration: "00:15:00",
+            slotDuration: zoomIn ? '00:05:00' : '00:15:00',
             slotMinTime: startOfDayDisp || startOfDay || DefaultStartOfDay, //"08:00:00",
             slotMaxTime: endOfDayDisp || endOfDay || DefaultEndOfDay, //"22:00:00",
 
@@ -265,6 +272,7 @@ class Calendar extends BaseGadget {
 
     viewModeChanged = (viewMode) => {
         this.setState({ viewMode });
+        this.fullCalendarOpts.dayHeaderFormat = this.getDayHeaderFormat(viewMode);
         this.calendar.getApi().changeView(viewMode);
         this.saveSettings({ ...this.state.settings, viewMode }, true);
     };
@@ -367,7 +375,8 @@ class Calendar extends BaseGadget {
                 .groupBy((key) => moment(key.start).format("YYYY-MM-DD"))
                 .map((d) => this.getAllDayObj(d));
 
-            this.latestData = data;
+            // Commented on 28-Mar-2023
+            //this.latestData = data;
 
             filter(data.addRange(allDayEvents).addRange(arr[1]));
         }, (err) => { this.setState({ isLoading: false }); return Promise.reject(err); });
@@ -419,9 +428,11 @@ class Calendar extends BaseGadget {
         });
     }
 
-    updateAllDayEvent(result) {
+    updateAllDayEvent(result, events) {
         const key = moment(result.start).format("YYYY-MM-DD");
-        const { events } = this.state;
+        if (!events) {
+            events = [...this.state.events];
+        }
         events.removeAll((e) => e.id === key && e.entryType === 3);
         const logs = events.filter((a) => a.entryType === 1 && moment(a.start).format("YYYY-MM-DD") === key);
         if (logs && logs.length > 0) {
@@ -480,29 +491,33 @@ class Calendar extends BaseGadget {
             return;
         } // This will be triggered when closing the popup
         let resp = false;
-        const { events } = this.state;
+        let { events } = this.state;
+        events = [...events];
 
         if (result.removed) {
             const removedId = result.removed + (result.deletedObj.worklogId ? `#${result.deletedObj.worklogId}` : "");
             result = events.first((e) => e.id === removedId && e.entryType === 1);
             events.remove(result);
-            this.latestData.remove((e) => e.id === result.id && e.entryType === 1);
+            // Commented on 28-Mar-2023
+            //this.latestData.remove((e) => e.id === result.id && e.entryType === 1);
         }
         else if (result.added || result.edited) {
             const previousTime = result.previousTime;
             result = result.added || result.edited;
+            result = { ...result };
             result.backgroundColor = this.state.settings.worklogColor; // Set color for newely added worklog
             result.borderColor = result.backgroundColor;
             events.removeAll((e) => e.id === result.id && e.entryType === 1);
             events.push(result);
-            this.latestData.removeAll((e) => e.id === result.id && e.entryType === 1);
-            this.latestData.push(result);
+            // Commented on 28-Mar-2023
+            //this.latestData.removeAll((e) => e.id === result.id && e.entryType === 1);
+            //this.latestData.push(result);
             resp = true;
             if (previousTime) {
-                this.updateAllDayEvent({ start: previousTime });
+                this.updateAllDayEvent({ start: previousTime }, events);
             }
         }
-        this.updateAllDayEvent(result);
+        this.updateAllDayEvent(result, events);
 
         //events.removeAll((e) => e.entryType === 3);
         this.setEventsData(events);
@@ -768,7 +783,7 @@ class Calendar extends BaseGadget {
         }
         else {
             const oldDate = eventSrcObj.dateStarted;
-            const newTime = snapTimeToGrid(snapMinutes, event.start);
+            const newTime = snapTimeToGrid(this.state.zoomIn ? 5 : snapMinutes, event.start);
             this.$worklog.changeWorklogDate(eventSrcObj, newTime).then((entry) => {
                 this.$analytics.trackEvent("Worklog moved", EventCategory.UserActions, eventSrcObj.isUploaded ? "Uploaded worklog" : "Pending worklog");
                 //this.updateAllDayEvent({ start: oldDate }); // This is to update the info of previous date
@@ -794,7 +809,7 @@ class Calendar extends BaseGadget {
 
     getEventDuration(event, snap) {
         if (event.end && event.start) {
-            const newTime = snap ? snapTimeToGrid(snapMinutes, event.end) : event.end;
+            const newTime = snap ? snapTimeToGrid(this.state.zoomIn ? 5 : snapMinutes, event.end) : event.end;
             const diff = moment.duration(moment(newTime).diff(event.start));
             return `${diff.hours().pad(2)}:${diff.minutes().pad(2)}`;
         }
@@ -846,11 +861,11 @@ class Calendar extends BaseGadget {
                 //this.contextMenu.toggle(e);
             };
 
-            leftIcon = (<i className="fa fa-ellipsis-v pull-left" title="Show options" onClick={contextEvent} event-icon="true"></i>);
+            leftIcon = (<i className="fa fa-ellipsis-v float-start" title="Show options" onClick={contextEvent} event-icon="true"></i>);
         }
         else if (entryType === 2) {
             const m = srcObj;
-            const hasWorklog = this.latestData.some((e) => e.parentId === event.id && e.entryType === 1);
+            const hasWorklog = this.state.events?.some((e) => e.parentId === event.id && e.entryType === 1);
 
             contextEvent = (e, a, d) => {
                 //hideContextMenu();
@@ -866,11 +881,11 @@ class Calendar extends BaseGadget {
             };
 
             if (!hasWorklog) {
-                leftIcon = (<i className="fa fa-clock-o pull-left" title="Create worklog for this meeting" event-icon="true"
+                leftIcon = (<i className="fa fa-clock float-start" title="Create worklog for this meeting" event-icon="true"
                     onClick={(e) => { e.stopPropagation(); this.createWorklog(e, m, this.defaultMeetingTicket); }}></i>);
             }
             else {
-                leftIcon = <i className="fa fa-ellipsis-v pull-left" title="Show options" onClick={contextEvent} event-icon="true"></i>;
+                leftIcon = <i className="fa fa-ellipsis-v float-start" title="Show options" onClick={contextEvent} event-icon="true"></i>;
             }
         }
 
@@ -890,6 +905,8 @@ class Calendar extends BaseGadget {
                 {!!subTitle && <div className={`fc-sub-title${clsName}`} title={subTitle}>{subTitle}</div>}
             </div>);
         }
+
+        return true;
     };
 
     async uploadWorklog(all) {
@@ -996,35 +1013,39 @@ class Calendar extends BaseGadget {
         this.$config.saveSettings('calendar', settings);
     };
 
-    toggleDisplayHours = () => this.setState(({ fullView }) => {
-        const newState = { fullView: !fullView };
-        this.fullCalendarOpts = this.getCalendarOptions(newState);
+    toggleDisplayHours = () => this.setState(state => this.updateOpts(state, { fullView: !state.fullView }));
+    toggleZoom = () => this.setState(state => this.updateOpts(state, { zoomIn: !state.zoomIn }));
+
+    updateOpts(state, newState) {
+        this.fullCalendarOpts = this.getCalendarOptions({ ...state, ...newState });
         return newState;
-    });
+    }
 
     today = () => this.calendar.getApi().today();
 
     renderCustomActions() {
         const {
             isGadget,
-            state: { pendingWorklogCount, isLoading, uploading, fullView, settings: { viewMode } }
+            state: { pendingWorklogCount, isLoading, uploading, fullView, zoomIn, settings: { viewMode } }
         } = this;
         const isGridMode = viewMode === 'timeGridWeek' || viewMode === 'timeGridDay';
         return <>
-            {isGridMode && <Button type="secondary" icon={fullView ? 'fa fa-compress' : 'fa fa-expand'} onClick={this.toggleDisplayHours}
+            <Button text label="Today" onClick={this.today} title="Navigate to current week" />
+            {isGridMode && <Button text type="secondary" icon={fullView ? 'fa fa-compress' : 'fa fa-expand'} onClick={this.toggleDisplayHours}
                 title={fullView ? "Click to show only working hours in calendar" : "Click to show full day calendar"} />}
-            <Button label="Today" onClick={this.today} title="Navigate to current week" />
+            <Button text onClick={this.toggleZoom} icon={zoomIn ? "fa fa-search-minus" : "fa fa-search-plus"}
+                title={zoomIn ? "Zoom out to see 15 mins grid" : "Zoom in to see 5 mins grid"} />
             {!this.isGadget && <>
-                <Button icon="fa fa-arrow-left" onClick={() => this.calendar.getApi().prev()} />
-                <Button icon="fa fa-arrow-right" onClick={() => this.calendar.getApi().next()} />
+                <Button text icon="fa fa-arrow-left" onClick={() => this.calendar.getApi().prev()} />
+                <Button text icon="fa fa-arrow-right" onClick={() => this.calendar.getApi().next()} />
                 <SelectBox dataset={viewModes} value={viewMode} valueField="value" displayField="label" style={{ width: '120px' }} onChange={this.viewModeChanged} />
             </>}
             <span className="info-badge" title={pendingWorklogCount ? `Upload ${pendingWorklogCount} pending worklog(s)` : 'No worklog pending to be uploaded'}>
                 {pendingWorklogCount > 0 && <span className="info btn-warning">{pendingWorklogCount}</span>}
-                <Button type="success" icon={uploading ? 'fa fa-spin fa-spinner' : 'fa fa-upload'} disabled={uploading || pendingWorklogCount < 1 || isLoading} onClick={() => this.uploadWorklog(true)} />
+                <Button text type="success" icon={uploading ? 'fa fa-spin fa-spinner' : 'fa fa-upload'} disabled={uploading || pendingWorklogCount < 1 || isLoading} onClick={() => this.uploadWorklog(true)} />
             </span>
-            <Button icon="fa fa-refresh" disabled={isLoading || uploading} onClick={this.refreshData} title="Refresh meetings and worklogs" />
-            {!isGadget && <Button icon="fa fa-cogs" onClick={this.toggleSettingsDialog} title="Show settings" />}
+            <Button text icon="fa fa-refresh" disabled={isLoading || uploading} onClick={this.refreshData} title="Refresh meetings and worklogs" />
+            {!isGadget && <Button text icon="fa fa-cogs" onClick={this.toggleSettingsDialog} title="Show settings" />}
         </>;
     }
 

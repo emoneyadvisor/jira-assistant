@@ -25,7 +25,12 @@ export function getFieldsToFetch(state, epicNameField, options) {
             fieldsToFetch.push(epicNameField);
         }
 
-        return { fieldsToFetch, additionalJQL };
+        const optionalFields = state.fields.optional;
+        if (Array.isArray(optionalFields) && optionalFields.length) {
+            optionalFields.forEach(({ key }) => fieldsToFetch.push(key));
+        }
+
+        return { fieldsToFetch: fieldsToFetch.distinct(), additionalJQL };
     }
 
     return { fieldsToFetch };
@@ -47,6 +52,7 @@ function getFlatMapper(usr, groupName, sprintName) {
         sprintName,
         username: getUserName(usr),
         userDisplay: userName,
+        fields: log.fields,
         assignee: log.assignee,
         reporter: log.reporter,
         parent: log.parent,
@@ -71,6 +77,28 @@ function getFlatMapper(usr, groupName, sprintName) {
         estVariance: log.estVariance,
         comment: log.comment
     });
+}
+
+export function generateIssueDayWiseData(groupReport, state) {
+    const { dates, groupedData, weeks } = groupReport;
+    let issuesList = groupedData.flatMap(group => group.users.flatMap(u => u.tickets));
+
+    if (state.splitWorklogDays) {
+        issuesList = issuesList.flatMap(issue => {
+            const { logs, fields } = issue;
+            return Object.keys(logs).map(k => {
+                const logItem = logs[k];
+                const { logTime } = logItem[0];
+                const sortIndex = `${logTime.format('yyyyMMddHHmm')}_${issue.ticketNo}`;
+
+                return ({ ...issue, fields: { ...fields, logDateTime: logTime }, logs: { [k]: logItem }, worklogStartIndex: sortIndex });
+            });
+        }).orderBy(i => i.worklogStartIndex);
+    } else {
+        issuesList = issuesList.orderBy(i => i.worklogStartIndex.pad(5) + i.ticketNo);
+    }
+
+    return { dates, weeks, issuesList };
 }
 
 export function getProjectKeys({ projects, userListMode }, ignoreSettings) {

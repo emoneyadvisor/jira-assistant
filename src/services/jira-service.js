@@ -131,10 +131,23 @@ export default class JiraService {
 
         result = await this.$ajax.get(ApiUrls.getCustomFields);
 
+        const createdFieldIndex = result.findIndex(f => f.id === 'created');
+        if (createdFieldIndex > 0) {
+            const createdField = result[createdFieldIndex];
+            const ageField = {
+                ...createdField,
+                custom: true,
+                id: 'issueAge',
+                name: 'Issue Age',
+                schema: { type: 'ageindays' }
+            };
+
+            result.splice(createdFieldIndex + 1, 0, ageField);
+        }
+
         this.$jaCache.session.set("customFields", result, 10);
 
         return result;
-
     }
 
     async getRapidViews() {
@@ -164,6 +177,20 @@ export default class JiraService {
         result = result.views || result.values;
 
         this.$jaCache.session.set("rapidViews", result, 10);
+
+        return result;
+    }
+
+    async getBoardConfig(boardId) {
+        let result = await this.$jaCache.session.getPromise(`boardConfig_${boardId}`);
+
+        if (result) {
+            return result;
+        }
+
+        result = await this.$ajax.get(ApiUrls.scrumBoardConfig, boardId);
+
+        this.$jaCache.session.set(`boardConfig_${boardId}`, result, 10);
 
         return result;
     }
@@ -297,8 +324,12 @@ export default class JiraService {
         return this.$ajax.put(ApiUrls.individualIssue, issue, key);
     }
 
-    getRapidSprintList = (rapidIds, asObj) => {
-        const reqArr = rapidIds.map((rapidId) => this.$jaCache.session.getPromise(`rapidSprintList${rapidId}`)
+    getRapidSprintList = (rapidIds, opts) => {
+        const asObj = typeof opts === 'boolean' ? opts : false;
+        const defaultState = 'active,closed';
+        const { state = defaultState, maxResults } = opts ?? {};
+
+        const reqArr = rapidIds.map((rapidId) => this.$jaCache.session.getPromise(`rapidSprintList${rapidId}_${state || defaultState}_${maxResults}`)
             .then(async (value) => {
                 if (value) {
                     return value;
@@ -309,7 +340,7 @@ export default class JiraService {
                     let data = null;
 
                     do {
-                        data = await this.$ajax.get(ApiUrls.sprintListByBoard, rapidId, startAt);
+                        data = await this.$ajax.get(ApiUrls.sprintListByBoard, rapidId, startAt, state || defaultState, maxResults || 50);
                         startAt = data.maxResults + data.startAt;
 
                         // Avoid showing sprints of other boards.
@@ -320,7 +351,8 @@ export default class JiraService {
                         else {
                             result.values.push(...data.values);
                         }
-                    } while (!data.isLast && --maxLoop > 0);
+                        // eslint-disable-next-line no-unmodified-loop-condition
+                    } while (!data.isLast && (!maxResults || result.values.length < maxResults) && --maxLoop > 0);
                 }
                 catch (err) {
                     console.warn('Getting rapid sprint list failed. Using alternate api.', err);
@@ -622,7 +654,7 @@ export default class JiraService {
 
 function runOnQueue(items, concurrent, execute) {
     return new Promise((done, reject) => {
-        const queue = Queue({ results: [] });
+        const queue = new Queue({ results: [] });
         queue.concurrency = concurrent;
         items.forEach(t => queue.push(() => execute(t)));
         queue.start((err) => {

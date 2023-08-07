@@ -25,14 +25,7 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
     - run: npm install --force
-    - run: npm run build-web
-    - run: git config --global user.name 'GitHub Web Deploy CI'
-    - run: git config --global user.email 'shridhar.tl@gmail.com'
-    - run: git remote set-url origin https://shridhar-tl:${{ secrets.COMMIT_KEY }}@github.com/${{ github.repository }}
-    - run: npm run deploy-web
     - run: npm run build
-    - run: git push origin --delete  ja-extn
-    - run: npm run publish-extn
     - name: Extract version
       id: extract_version
       uses: Saionaro/extract-package-version@v1.0.6

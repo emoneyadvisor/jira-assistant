@@ -5,16 +5,17 @@ import UserRow from './UserRow';
 
 function GroupRow({
     group: grp, index, dates, sprintsList, convertSecs, isSprint, boardId, costView,
-    timeExportFormat, colSpan
+    timeExportFormat, additionalCols
 }) {
     const [hidden, setVisibility] = useState(false);
     const toggleDisplay = useCallback(() => setVisibility((h) => !h), [setVisibility]);
+    const colSpan = (additionalCols?.length || 0) + 1;
 
     return (
         <>
             {!hidden && !grp.isDummy && <tr className="grouped-row left" title="Click to hide user details">
                 <td colSpan={isSprint ? colSpan : dates?.length + 1 + colSpan} onClick={toggleDisplay}>
-                    <i className="pull-left drill-down fa fa-chevron-circle-down" />
+                    <i className="float-start drill-down fa fa-chevron-circle-down" />
                     {grp.name}
                 </td>
                 {isSprint && grp.sprints.map((s, i) => ((s.days <= 999) ?
@@ -23,14 +24,14 @@ function GroupRow({
             </tr>}
 
             {!hidden && grp.users.map((u, i) => <UserRow key={i} groupIndex={index} index={i} colSpan={colSpan} user={u}
-                timeExportFormat={timeExportFormat} boardId={boardId} costView={costView}
+                timeExportFormat={timeExportFormat} boardId={boardId} costView={costView} additionalCols={additionalCols}
             />)}
 
             {!grp.isDummy && <tr className="grouped-row right auto-wrap" onClick={hidden ? toggleDisplay : null}>
                 <td colSpan={colSpan}>
                     {hidden && <div>
-                        <i className="pull-left drill-down fa fa-chevron-circle-right" title="Click to show user details" />
-                        <span className="pull-left">{grp.name}</span><span className="pull-right">Total <i className="fa fa-arrow-right" /></span>
+                        <i className="float-start drill-down fa fa-chevron-circle-right" title="Click to show user details" />
+                        <span className="float-start">{grp.name}</span><span className="float-end">Total <i className="fa fa-arrow-right" /></span>
                     </div>}
                     {!hidden && <div>{grp.name} <i className="fa fa-arrow-right" /> Total <i className="fa fa-arrow-right" /></div>}
                 </td>

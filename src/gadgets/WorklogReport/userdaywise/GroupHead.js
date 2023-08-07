@@ -1,9 +1,10 @@
 import React, { Fragment } from 'react';
 import { THead } from '../../../components/ScrollableTable';
 import { connect } from '../datastore';
+import { DatesList, WeeksList } from './shared';
 
-function GroupHead({ useSprint, sprintsList, addlColCount, costView, fields }) {
-    const { showProject, showParentSummary, showIssueType, showStatus, showEpic, showAssignee, showReporter } = fields || {};
+function GroupHead({ useSprint, sprintsList, additionalCols, costView }) {
+    const addlColCount = (additionalCols?.length || 0) + 1;
 
     return (<THead>
         <tr className="data-center pad-min auto-wrap">
@@ -18,13 +19,7 @@ function GroupHead({ useSprint, sprintsList, addlColCount, costView, fields }) {
         </tr>
         <tr className="pad-min auto-wrap">
             {addlColCount > 1 && <th style={{ minWidth: 380 }} >Issue details</th>}
-            {!!showProject && <th>Project</th>}
-            {!!showParentSummary && <th>Parent Summary</th>}
-            {!!showIssueType && <th>Issuetype</th>}
-            {!!showStatus && <th>Status</th>}
-            {!!showEpic && <th>Epic</th>}
-            {!!showAssignee && <th>Assignee</th>}
-            {!!showReporter && <th>Reporter</th>}
+            {additionalCols?.map(f => <th key={f.key}>{f.name}</th>)}
             {useSprint && sprintsList.map(({ id }) => <DatesList key={id} sprintId={id} />)}
             {!useSprint && <DatesList />}
         </tr>
@@ -34,26 +29,12 @@ function GroupHead({ useSprint, sprintsList, addlColCount, costView, fields }) {
 export default connect(GroupHead,
     (state, { boardId }) => {
         const {
-            fields, selSprints, timeframeType,
+            selSprints, timeframeType,
         } = state;
         const useSprint = timeframeType === '1';
         return {
-            useSprint, fields,
+            useSprint,
             board: useSprint ? selSprints[boardId] : undefined,
             sprintsList: useSprint ? state[`sprintsList_${boardId}`] : undefined
         };
     });
-
-const WeeksList = connect(function ({ weeks }) {
-    return weeks.map((day, i) => <th key={i} className="week-head" colSpan={day.days}>{day.display}</th>);
-}, (state, { sprint }) => {
-    const { [sprint ? `groupReport_${sprint.id}` : 'groupReport']: { weeks } } = state;
-    return { weeks };
-});
-
-const DatesList = connect(function ({ dates }) {
-    return dates.map((day, i) => <th key={i} data-test-id={day.prop} className={`day-head${day.isHoliday ? ' holiday' : ''}`}>{day.dateNum}<br /><span className="day-name">{day.day}</span></th>);
-}, (state, { sprintId }) => {
-    const { [sprintId ? `groupReport_${sprintId}` : 'groupReport']: { dates } } = state;
-    return { dates };
-});

@@ -162,11 +162,20 @@ export function getHostFromUrl(url) {
 }
 
 export function getOriginFromUrl(url) {
-    if (url && typeof url !== "string") { url = url.toString(); }
+    if (url && typeof url !== "string") {
+        url = url.toString();
+    }
+
     let origin = new URL(url).origin;
+
+    if (!origin || origin === 'null') {
+        return;
+    }
+
     if (!origin.endsWith("/")) {
         origin += "/";
     }
+
     return origin;
 }
 
@@ -177,7 +186,7 @@ export function setStartOfWeek(startOfWeek) {
 
 export function getUserName(userObj, convertToLower) {
     let name = null;
-    if (typeof userObj === "object") {
+    if (userObj && typeof userObj === "object") {
         name = (userObj.name || userObj.emailAddress || userObj.accountId);
     }
 

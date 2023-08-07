@@ -19,6 +19,7 @@
     &.short-desc {
       max-height: 40px;
       display: -webkit-box;
+      overflow: hidden;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
     }
@@ -37,13 +38,15 @@
     &.short-desc {
       max-height: 50px;
       -webkit-line-clamp: 3;
+      overflow: hidden;
     }
   }
 }
 
 .fc-content .fa-ellipsis-v {
   font-size: 16px;
-  padding-right: 2px;
+  padding-left: 4px;
+  padding-right: 4px;
   color: #fff;
 }
 
@@ -55,7 +58,7 @@
   color: #228b22;
 }
 
-.fc-content .fa-clock-o {
+.fc-content .fa-clock {
   font-size: 13px;
   margin-left: 3px;
   margin-top: 3px;
