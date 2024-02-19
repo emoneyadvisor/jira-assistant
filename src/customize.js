@@ -13,6 +13,8 @@ const config = {
         // Reports
         worklogReport: true,
         worklogReportOld: false,
+        pivotReport: false,
+        sayDoRatioReport: true,
         sprintReport: false,
         customReport: false,
         estimateVsActual: false,

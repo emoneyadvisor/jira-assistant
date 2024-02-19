@@ -1,5 +1,5 @@
 div.scroll-table-container {
-    width: calc(100% - 3px);
+    width: calc(100% - 2px);
     height: 100%;
     overflow: auto;
 
@@ -132,9 +132,17 @@ div.scroll-table-container {
         }
 
         tfoot {
-            background-color: #ebedf0;
-
             tr {
+                th {
+                    padding: 4px 16px;
+                    font-weight: 400;
+                    color: #555;
+                    font-size: 1em;
+                    text-align: left;
+                    font-weight: 600;
+                    background-color: #fff;
+                }
+
                 td {
                     padding: 5px 8px;
                 }
@@ -155,7 +163,7 @@ div.scroll-table-container {
 
                     th,
                     td {
-                        border-color: #dfe1e6;
+                        border: 1px solid #dfe1e6;
                     }
                 }
             }
