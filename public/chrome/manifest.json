@@ -3,7 +3,7 @@
   "minimum_chrome_version": "102",
   "name": "Jira Assistant: Worklog, Sprint report, etc",
   "short_name": "Jira Assist",
-  "version": "2.54",
+  "version": "2.58",
   "description": "Help to track & upload work done on a Jira Ticket on timely basis and generate Worklog, Sprint and other custom reports.",
   "icons": {
     "24": "/assets/icon_24.png",
@@ -35,7 +35,7 @@
       "https://*.atlassian.net/*"
     ]
   },
-  "options_page": "/index.html#/options",
+  "options_page": "index.html#/options",
   "background": {
     "service_worker": "/static/js/background.js"
   },
@@ -73,12 +73,15 @@
   "offline_enabled": true,
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "idle",
     "scripting",
     "unlimitedStorage",
-    "identity",
-    "tabs"
+    "identity"
+  ],
+  "host_permissions": [
+    "https://*.atlassian.net/"
   ],
   "host_permissions": [
     "https://*.atlassian.net/*"

@@ -1,4 +1,5 @@
-import { getRouteUrl, isPluginBuild, isWebBuild } from "./constants/build-info";
+import { getRouteUrl, isExtnBuild, isPluginBuild, isWebBuild } from "./constants/build-info";
+import { JAWebRootUrl } from "./constants/urls";
 import config from './customize';
 
 export function getDashboardMenu(d, idx, userId) {
@@ -23,7 +24,7 @@ const { dashboards,
     calendar, importWorklog, importIssues, planningPoker,
 
     // Reports
-    worklogReport, worklogReportOld, sprintReport, customReport, estimateVsActual, reportBuilder,
+    worklogReport, worklogReportOld, sprintReport, customReport, estimateVsActual, reportBuilder, pivotReport, sayDoRatioReport,
 
     // Settings
     userGroups, generalSettings, advancedSettings,
@@ -79,7 +80,7 @@ const navigation = [
                 name: 'Poker',
                 id: 'PLP',
                 external: !isPluginBuild,
-                url: getRouteUrl(isWebBuild ? '/../poker' : '/poker'),
+                url: isExtnBuild ? `${JAWebRootUrl}/poker` : getRouteUrl(isWebBuild ? '/../poker' : '/poker'),
                 icon: 'fa fa-gamepad'
             }
         ].filter(Boolean)
@@ -94,6 +95,22 @@ const navigation = [
                 url: '/reports/worklog',
                 icon: 'fa fa-users'
             },
+            pivotReport && {
+                name: 'Pivot Report',
+                id: 'R-PR',
+                url: '/reports/pivot',
+                icon: 'fa fa-table',
+                badge: {
+                    variant: 'success',
+                    text: 'BETA'
+                }
+            },
+            sayDoRatioReport && {
+                name: 'Say-Do Ratio',
+                id: 'R-SDR',
+                url: '/reports/say-do-ratio',
+                icon: 'fa fa-chart-line'
+            },
             worklogReportOld && {
                 name: 'Worklog Report',
                 id: 'R-UD',
@@ -101,7 +118,7 @@ const navigation = [
                 icon: 'fa fa-users',
                 badge: {
                     variant: 'danger',
-                    text: 'OLD'
+                    text: 'DEPR'
                 }
             },
             sprintReport && {
@@ -128,8 +145,8 @@ const navigation = [
                 url: '/reports/advanced',
                 icon: 'fa fa-table',
                 badge: {
-                    variant: 'success',
-                    text: 'BETA'
+                    variant: 'danger',
+                    text: 'DEPR'
                 }
             }
         ].filter(Boolean)
