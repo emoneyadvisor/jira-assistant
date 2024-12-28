@@ -18,7 +18,6 @@ const config = {
         sprintReport: false,
         customReport: false,
         estimateVsActual: false,
-        reportBuilder: false,
 
         // Settings
         userGroups: true,

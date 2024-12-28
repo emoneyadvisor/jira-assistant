@@ -40,7 +40,17 @@ modules:
       label: View time tracker
       resource: main
       icon: https://app.jiraassistant.com/assets/icon_24.png
+  trigger:
+    - key: sprint-started-trigger
+      function: sprint-started-handler
+      events:
+        - avi:jira-software:started:sprint
+      filter:
+        ignoreSelf: true
+        onError: RECEIVE_AND_LOG
   function:
+    - key: sprint-started-handler
+      handler: jcloud-events.onSprintStarted
     - key: resolver
       handler: jcloud.handler
 resources:
@@ -65,6 +75,14 @@ permissions:
     - read:issue-details:jira
     - read:jql:jira
     - read:jira-work
+    - read:board-scope:jira-software
+    - read:project:jira
+    - read:issue-meta:jira
+    - read:avatar:jira
+    - read:issue.changelog:jira
     - write:jira-work
+    - write:sprint:jira-software
 app:
   id: ari:cloud:ecosystem::app/23d5a83f-993b-4bfb-9a2b-65d808190e86
+  runtime:
+    name: nodejs20.x
